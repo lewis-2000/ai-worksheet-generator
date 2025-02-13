@@ -27,8 +27,11 @@ class AI_Worksheet_Generator
 
     public function enqueue_assets()
     {
-        wp_enqueue_style('bootstrap-css', 'https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css');
-        wp_enqueue_script('bootstrap-js', 'https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js', array('jquery'), null, true);
+        // Enqueue Tailwind CSS from the official CDN
+        wp_enqueue_script('tailwind-config', 'https://cdn.tailwindcss.com', array(), null, false);
+
+        // Add inline script to configure Tailwind before it's used
+        wp_add_inline_script('tailwind-config', 'tailwind.config = { theme: { extend: {} } }', 'before');
         wp_enqueue_style('awg-styles', plugin_dir_url(__FILE__) . 'css/styles.css');
 
     }
@@ -42,6 +45,7 @@ class AI_Worksheet_Generator
         add_action('wp_ajax_generate_ai_response', array($this, 'generate_ai_response'));
         add_action('wp_ajax_fetch_latest_pdf', array($this, 'fetch_latest_pdf'));
         add_action('wp_ajax_nopriv_generate_ai_response', array($this, 'generate_ai_response'));
+        add_action('admin_init', array($this, 'handle_template_upload'));
         add_shortcode('awg_generate_html', array($this, 'display_html_response'));
         add_shortcode('awg_view_pdf', array($this, 'view_pdf'));
     }
@@ -65,6 +69,7 @@ class AI_Worksheet_Generator
         <div class="wrap">
             <h2>AI Worksheet Generator</h2>
 
+            <!-- API Key Section -->
             <form method="post" action="options.php">
                 <?php
                 settings_fields('awg_settings_group');
@@ -72,6 +77,38 @@ class AI_Worksheet_Generator
                 submit_button();
                 ?>
             </form>
+
+            <!-- Template & Premade Worksheet Upload Section -->
+            <h3>Manage Templates & Premade Worksheets</h3>
+            <form method="post" enctype="multipart/form-data">
+                <label for="template_name">Name:</label>
+                <input type="text" name="template_name" required>
+
+                <label for="template_type">Type:</label>
+                <select name="template_type">
+                    <option value="template">Template</option>
+                    <option value="premadeworksheet">Premade Worksheet</option>
+                </select>
+
+                <label for="template_file">Upload HTML File:</label>
+                <input type="file" name="template_file" accept=".html" required>
+
+                <label for="template_image">Upload Preview Image:</label>
+                <input type="file" name="template_image" accept="image/*" required>
+
+                <input type="submit" name="upload_template" value="Upload">
+            </form>
+
+            <!-- Display Existing Templates -->
+            <h3>Existing Templates & Worksheets</h3>
+            <ul>
+                <?php
+                $templates = get_option('awg_templates', []);
+                foreach ($templates as $template) {
+                    echo "<li>{$template['name']} ({$template['type']}) - <a href='{$template['file']}'>View</a> | <img src='{$template['image']}' width='50'></li>";
+                }
+                ?>
+            </ul>
         </div>
         <?php
     }
@@ -79,6 +116,7 @@ class AI_Worksheet_Generator
     public function register_settings()
     {
         register_setting('awg_settings_group', 'openai_api_key');
+        register_setting('awg_settings_group', 'awg_templates'); // Store templates
         add_settings_section('awg_main_section', 'API Settings', null, 'awg_settings_page');
         add_settings_field('openai_api_key', 'OpenAI API Key', array($this, 'api_key_field'), 'awg_settings_page', 'awg_main_section');
     }
@@ -88,6 +126,38 @@ class AI_Worksheet_Generator
         $api_key = get_option('openai_api_key', '');
         echo "<input type='text' name='openai_api_key' value='" . esc_attr($api_key) . "' style='width: 100%;'>";
     }
+
+    // Handle template uploads
+    public function handle_template_upload()
+    {
+        if (isset($_POST['upload_template'])) {
+            $name = sanitize_text_field($_POST['template_name']);
+            $type = sanitize_text_field($_POST['template_type']);
+            $prefix = ($type == 'template') ? 'template-' : 'premadeworksheet-';
+
+            // Handle file upload
+            if (!empty($_FILES['template_file']['name']) && !empty($_FILES['template_image']['name'])) {
+                $file_id = media_handle_upload('template_file', 0);
+                $image_id = media_handle_upload('template_image', 0);
+
+                if (!is_wp_error($file_id) && !is_wp_error($image_id)) {
+                    $file_url = wp_get_attachment_url($file_id);
+                    $image_url = wp_get_attachment_url($image_id);
+
+                    $templates = get_option('awg_templates', []);
+                    $templates[] = [
+                        'name' => $prefix . $name,
+                        'type' => $type,
+                        'file' => $file_url,
+                        'image' => $image_url
+                    ];
+                    update_option('awg_templates', $templates);
+                }
+            }
+        }
+    }
+
+
 
     public function generate_ai_response()
     {
@@ -205,114 +275,169 @@ class AI_Worksheet_Generator
     public function display_html_response()
     {
         ob_start(); ?>
-        <div class="hero-section container mt-4">
-            <div class="row align-items-center">
-                <div class="col-md-6">
-                    <h1 class="display-4">Create Your Worksheet</h1>
-                    <p class="lead">Generate AI-powered worksheets or select from our templates to get started quickly.</p>
-                    <button id="select-template-btn" class="btn btn-secondary me-2 function-button">Select Template</button>
-                    <button id="create-with-ai-btn" class="btn btn-primary function-button">Create with AI</button>
+
+        <div class="hero-section max-w-5xl mx-auto p-6 shadow-lg rounded-lg">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
+                <div>
+                    <h1 class="text-4xl font-bold">Create Your Worksheet</h1>
+                    <p class="text-lg text-gray-600 my-4">
+                        Generate AI-powered worksheets or select from our templates to get started quickly.
+                    </p>
+                    <button id="select-template-btn" class="bg-gray-500 text-white px-4 py-2 rounded-lg mr-2">
+                        Select Template
+                    </button>
+                    <button id="create-with-ai-btn" class="bg-blue-600 text-white px-4 py-2 rounded-lg">
+                        Create with AI
+                    </button>
                 </div>
-                <div class="col-md-6 hero-image-container">
-                    <img src="<?php echo plugin_dir_url(__FILE__) . 'images/bgh.png'; ?>" class="hero-image"
+                <div class="hero-image-container">
+                    <img src="<?php echo plugin_dir_url(__FILE__) . 'images/bgh.png'; ?>" class="w-full rounded-lg object-cover"
                         alt="Worksheet Image">
                 </div>
             </div>
         </div>
 
-        <!-- Full-Screen AI Overlay -->
-        <div id="ai-overlay" class="ai-overlay container">
-            <div class="ai-top-bar">
-                <span class="ai-logo">AI Worksheet Generator</span>
-                <div class="auth-links">
-                    <a href="#" class="login-link">Login</a>
-                    <a href="#" class="signup-link">Sign Up</a>
-                    <span class="close-btn" id="close-ai-overlay">&times;</span>
-                </div>
-            </div>
-            <div class="ai-content">
-                <div class="ai-input-section">
-                    <h2>Enter Your Prompt</h2>
-                    <input type="text" id="awg-prompt" class="form-control" placeholder="Enter worksheet topic...">
-                    <button id="awg-generate-btn" class="btn btn-primary w-100 mt-2">Generate Worksheet</button>
+        <div id="ai-overlay" class="fixed flex-col bg-black/30 backdrop-blur-md inset-0 shadow-2xl m-auto container p-3 hidden">
+            <!-- Overlay Content -->
+            <div class="bg-white w-full p-4 rounded-lg shadow-lg mx-auto h-full overflow-hidden">
+                <!-- Navigation Bar -->
+                <nav class="flex justify-between items-center bg-gray-100 p-3 rounded-md">
+                    <!-- Tabs -->
+                    <div class="flex space-x-4">
+                        <button class="tab-button active px-4 py-2 rounded-md text-gray-700 font-semibold hover:bg-gray-200"
+                            data-tab="templates">
+                            Premade Templates
+                        </button>
+                        <button class="tab-button px-4 py-2 rounded-md text-gray-700 font-semibold hover:bg-gray-200"
+                            data-tab="worksheets">
+                            Premade Worksheets
+                        </button>
+                        <button class="tab-button px-4 py-2 rounded-md text-gray-700 font-semibold hover:bg-gray-200"
+                            data-tab="ai-generation">
+                            AI Generation
+                        </button>
+                    </div>
 
+                    <!-- Google Login -->
+                    <div id="google-login" class="flex items-center space-x-2 cursor-pointer">
+                        <img src="google-icon.png" alt="Google" class="w-6 h-6">
+                        <button class="text-blue-600 font-semibold">Sign in with Google</button>
+                    </div>
 
-                </div>
-                <div class="ai-preview-section">
-                    <h2>Live Preview</h2>
-                    <div id="awg-html-output" class="preview-box"></div>
-                    <div id="awg-pdf-container" class="mt-4" style="display: none;">
-                        <h3 class="text-center">Generated Worksheet PDF</h3>
-                        <iframe id="awg-pdf-frame" class="w-100" style="height: 500px; border: none;">
-                            <div id="awg-loading" class="text-center mt-3" style="display: none;">
-                                <div class="spinner-border text-primary" role="status">
-                                    <span class="visually-hidden">Generating...</span>
-                                </div>
-                                <p class="mt-2">Generating worksheet, please wait...</p>
+                    <!-- Close Button -->
+                    <button id="close-ai-overlay" class="text-gray-600 text-2xl">&times;</button>
+                </nav>
+
+                <!-- Dynamic Content Area -->
+                <div id="tab-content" class="bg-white p-4 rounded-md mt-2 h-full overflow-y-auto w-full">
+                    <!-- Premade Templates Tab -->
+                    <div id="templates" class="tab-content">
+                        <div class="flex gap-4">
+                            <!-- Grid of Templates -->
+                            <div id="template-grid" class="grid grid-cols-3 h-auto gap-4 w-2/3">
+                                <!-- Templates are injected here by JavaScript -->
                             </div>
-                        </iframe>
-                        <a id="awg-download-pdf" class="btn btn-success mt-3 w-100" href="#" target="_blank" download>Download
-                            PDF</a>
+
+                            <!-- Preview Section -->
+                            <div class="w-1/3 h-auto bg-gray-100 p-4 rounded-md">
+                                <h3 class="text-lg font-semibold mb-2">Template Preview</h3>
+                                <img id="template-preview"
+                                    src="<?php echo plugin_dir_url(__FILE__) . 'images/placeholder.png'; ?>" alt="Preview"
+                                    class="w-full rounded-md border">
+                                <p id="template-name" class="text-center mt-2 text-gray-700">Select a template</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Premade Worksheets Tab -->
+                    <div id="worksheets" class="tab-content hidden">
+                        <p class="text-gray-700">Worksheets content here...</p>
+                    </div>
+
+                    <!-- AI Generation Tab -->
+                    <div id="ai-generation" class="tab-content hidden">
+                        <p class="text-gray-700">AI Generation content here...</p>
                     </div>
                 </div>
             </div>
         </div>
 
         <script>
-            document.getElementById("create-with-ai-btn").addEventListener("click", function () {
-                document.getElementById("ai-overlay").style.display = "flex";
-            });
+            document.addEventListener("DOMContentLoaded", function () {
+                const overlay = document.getElementById("ai-overlay");
+                const body = document.body;
 
-            document.getElementById("close-ai-overlay").addEventListener("click", function () {
-                document.getElementById("ai-overlay").style.display = "none";
-            });
+                // Open AI Overlay
+                document.getElementById("create-with-ai-btn").addEventListener("click", function () {
+                    overlay.style.display = "flex";
+                    body.classList.add("no-scroll");
+                });
 
-            document.getElementById("awg-generate-btn").addEventListener("click", function () {
-                let userPrompt = document.getElementById("awg-prompt").value;
-                if (!userPrompt) return;
+                // Close AI Overlay
+                document.getElementById("close-ai-overlay")?.addEventListener("click", function () {
+                    overlay.style.display = "none";
+                    body.classList.remove("no-scroll");
+                });
 
-                document.getElementById("awg-loading").style.display = "block";
-                document.getElementById("awg-html-output").style.display = "none";
-                document.getElementById("awg-pdf-container").style.display = "none";
+                // Handle tab navigation
+                document.querySelectorAll('.tab-button').forEach(button => {
+                    button.addEventListener('click', () => {
+                        document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('bg-gray-300', 'text-gray-900'));
+                        button.classList.add('bg-gray-300', 'text-gray-900');
 
-                fetch("<?php echo admin_url('admin-ajax.php'); ?>", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-                    body: "action=generate_ai_response&prompt=" + encodeURIComponent(userPrompt)
-                })
-                    .then(response => response.json())
-                    .then(jsonData => {
-                        document.getElementById("awg-loading").style.display = "none";
-
-                        if (jsonData.success) {
-                            document.getElementById("awg-html-output").innerHTML = jsonData.html;
-                            document.getElementById("awg-html-output").style.display = "block";
-
-                            let checkPdfInterval = setInterval(() => {
-                                fetch("<?php echo admin_url('admin-ajax.php'); ?>?action=fetch_latest_pdf")
-                                    .then(response => response.json())
-                                    .then(pdfData => {
-                                        if (pdfData.success) {
-                                            clearInterval(checkPdfInterval);
-                                            document.getElementById("awg-pdf-frame").src = pdfData.pdf_url;
-                                            document.getElementById("awg-download-pdf").href = pdfData.pdf_url;
-                                            document.getElementById("awg-pdf-container").style.display = "block";
-                                        }
-                                    });
-                            }, 3000);
-                        } else {
-                            alert("Error: " + jsonData.message);
-                        }
-                    })
-                    .catch(error => {
-                        document.getElementById("awg-loading").style.display = "none";
-                        console.error("Fetch Error:", error);
-                        alert("An unexpected error occurred.");
+                        document.querySelectorAll('.tab-content').forEach(content => content.classList.add('hidden'));
+                        document.getElementById(button.getAttribute('data-tab')).classList.remove('hidden');
                     });
+                });
+
+                // Default open first tab
+                document.querySelector('.tab-button').click();
+
+                // Template Selection Logic
+                function setupTemplateSelection() {
+                    document.getElementById('template-grid').addEventListener('click', (event) => {
+                        const card = event.target.closest('.template-card');
+                        if (!card) return;
+
+                        const templateName = card.getAttribute('data-template');
+                        const imageSrc = card.querySelector('img').src;
+
+                        document.getElementById('template-preview').src = imageSrc;
+                        document.getElementById('template-name').innerText = templateName.replace('template-', 'Template ').replace('premadeworksheet-', 'Worksheet ');
+                    });
+                }
+
+                function loadTemplates() {
+                    const templates = <?php echo json_encode(get_option('awg_templates', [])); ?>;
+                    const templateGrid = document.getElementById('template-grid');
+                    templateGrid.innerHTML = '';
+
+                    if (templates.length === 0) {
+                        templateGrid.innerHTML = "<p class='text-gray-500 text-center col-span-3'>No templates available.</p>";
+                        return;
+                    }
+
+                    templates.forEach(template => {
+                        const card = document.createElement('div');
+                        card.className = "template-card bg-white p-3 h-fit rounded-lg shadow hover:shadow-lg transition-all cursor-pointer";
+                        card.setAttribute('data-template', template.name);
+
+                        card.innerHTML = `<img src="${template.image}" alt="${template.name}" class="w-full h-32 object-cover rounded-md border border-gray-300">
+                                            <p class="text-center mt-2 font-medium text-gray-800">${template.name.replace('template-', 'Template ').replace('premadeworksheet-', 'Worksheet ')}</p> `;
+
+                        templateGrid.appendChild(card);
+                    });
+                }
+
+                // Initialize functions
+                loadTemplates();
+                setupTemplateSelection();
             });
         </script>
+
         <?php return ob_get_clean();
     }
+
 
 
 
