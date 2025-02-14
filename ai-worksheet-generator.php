@@ -183,11 +183,8 @@ class AI_Worksheet_Generator
             'headers' => array(
                 'Content-Type' => 'application/json'
             ),
-            'timeout' => 30 // Increase timeout to 30 seconds
+            'timeout' => 30
         ));
-
-
-
 
         if (is_wp_error($response)) {
             wp_send_json_error(['message' => 'API request failed: ' . $response->get_error_message()]);
@@ -199,11 +196,45 @@ class AI_Worksheet_Generator
             wp_send_json_error(['message' => 'Invalid response from Gemini. Response: ' . print_r($body, true)]);
         }
 
-        $generated_html = wp_kses_post(nl2br($body['candidates'][0]['content']['parts'][0]['text']));
+        // Extract generated content and remove unnecessary ```html blocks
+        $generated_html = trim($body['candidates'][0]['content']['parts'][0]['text']);
+        $generated_html = preg_replace('/^```html|```$/m', '', $generated_html); // Remove markdown fences
 
-        $pdf_url = $this->generate_pdf($generated_html);
+        // Extract inline CSS and move to <style> tags
+        $updated_html = $this->extract_and_move_inline_css($generated_html);
 
-        wp_send_json_success(['html' => $generated_html, 'pdf_url' => $pdf_url]);
+        // Generate PDF from the cleaned HTML
+        $pdf_url = $this->generate_pdf($updated_html);
+
+        wp_send_json_success(['html' => $updated_html, 'pdf_url' => $pdf_url]);
+    }
+
+    /**
+     * Extracts inline CSS from style attributes and moves them into a <style> block.
+     */
+    private function extract_and_move_inline_css($html)
+    {
+        $dom = new DOMDocument();
+        libxml_use_internal_errors(true); // Suppress parsing errors
+        $dom->loadHTML($html, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+        libxml_clear_errors();
+
+        $styles = [];
+        foreach ($dom->getElementsByTagName('*') as $element) {
+            if ($element->hasAttribute('style')) {
+                $tag = $element->nodeName;
+                $style = $element->getAttribute('style');
+                $class_name = 'custom-' . uniqid(); // Unique class name
+                $element->removeAttribute('style');
+                $element->setAttribute('class', $class_name);
+                $styles[] = ".$class_name { $style }";
+            }
+        }
+
+        $css = implode("\n", $styles);
+        $style_tag = "<style>\n$css\n</style>\n";
+
+        return $style_tag . $dom->saveHTML();
     }
 
 
@@ -356,10 +387,47 @@ class AI_Worksheet_Generator
 
                     <!-- AI Generation Tab -->
                     <div id="ai-generation" class="tab-content hidden">
-                        <p class="text-gray-700">AI Generation content here...</p>
+                        <div class="ai-content flex flex-col md:flex-row gap-6 p-6 bg-gray-100 rounded-lg shadow-lg">
+                            <div class="ai-input-section w-full md:w-1/2 bg-white p-6 rounded-lg shadow-md">
+                                <h2 class="text-xl font-semibold mb-4">Enter Your Prompt</h2>
+                                <input type="text" id="awg-prompt"
+                                    class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                                    placeholder="Enter worksheet topic...">
+                                <button id="awg-generate-btn"
+                                    class="w-full mt-3 bg-blue-500 text-white py-2 px-4 rounded-md hover:bg-blue-600 transition">
+                                    Generate Worksheet
+                                </button>
+                            </div>
+
+                            <div class="ai-preview-section w-full md:w-1/2 bg-white p-6 rounded-lg shadow-md">
+                                <h2 class="text-xl font-semibold mb-4">Live Preview</h2>
+                                <div id="awg-html-output"
+                                    class="preview-box border border-gray-300 p-4 rounded-md min-h-[200px]"></div>
+
+                                <div id="awg-pdf-container" class="mt-6 hidden">
+                                    <h3 class="text-center text-lg font-semibold">Generated Worksheet PDF</h3>
+                                    <iframe id="awg-pdf-frame" class="w-full h-[500px] border-none"></iframe>
+
+                                    <div id="awg-loading" class="text-center mt-3 hidden">
+                                        <div
+                                            class="animate-spin inline-block w-6 h-6 border-4 border-blue-500 border-t-transparent rounded-full">
+                                        </div>
+                                        <p class="mt-2 text-gray-600">Generating worksheet, please wait...</p>
+                                    </div>
+
+                                    <a id="awg-download-pdf"
+                                        class="w-full mt-3 block text-center bg-green-500 text-white py-2 px-4 rounded-md hover:bg-green-600 transition"
+                                        href="#" target="_blank" download>
+                                        Download PDF
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+
                     </div>
                 </div>
             </div>
+        </div>
         </div>
 
         <script>
@@ -432,6 +500,52 @@ class AI_Worksheet_Generator
                 // Initialize functions
                 loadTemplates();
                 setupTemplateSelection();
+
+                //AI Overlay Tab
+                document.getElementById("awg-generate-btn").addEventListener("click", function () {
+                    let userPrompt = document.getElementById("awg-prompt").value;
+                    if (!userPrompt) return;
+
+                    document.getElementById("awg-loading").style.display = "block";
+                    document.getElementById("awg-html-output").style.display = "none";
+                    document.getElementById("awg-pdf-container").style.display = "none";
+
+                    fetch("<?php echo admin_url('admin-ajax.php'); ?>", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                        body: "action=generate_ai_response&prompt=" + encodeURIComponent(userPrompt)
+                    })
+                        .then(response => response.json())
+                        .then(jsonData => {
+                            document.getElementById("awg-loading").style.display = "none";
+
+                            if (jsonData.success) {
+                                document.getElementById("awg-html-output").innerHTML = jsonData.html;
+                                document.getElementById("awg-html-output").style.display = "block";
+
+                                let checkPdfInterval = setInterval(() => {
+                                    fetch("<?php echo admin_url('admin-ajax.php'); ?>?action=fetch_latest_pdf")
+                                        .then(response => response.json())
+                                        .then(pdfData => {
+                                            if (pdfData.success) {
+                                                clearInterval(checkPdfInterval);
+                                                document.getElementById("awg-pdf-frame").src = pdfData.pdf_url;
+                                                document.getElementById("awg-download-pdf").href = pdfData.pdf_url;
+                                                document.getElementById("awg-pdf-container").style.display = "block";
+                                            }
+                                        });
+                                }, 3000);
+                            } else {
+                                alert("Error: " + jsonData.message);
+                            }
+                        })
+                        .catch(error => {
+                            document.getElementById("awg-loading").style.display = "none";
+                            console.error("Fetch Error:", error);
+                            alert("An unexpected error occurred.");
+                        });
+                });
+
             });
         </script>
 

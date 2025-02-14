@@ -1,0 +1,40 @@
+Generate a complete worksheet in HTML using only inline CSS. Do not use <style> tags, <link> elements, or CSS selectors. All styles must be placed directly inside the style attribute of each HTML element. The worksheet should have:
+
+A header section (centered title, subject, and date).
+An instructions section with a light background and padding.
+A question list using an ordered <ol> list with spacing between questions.
+An answer section styled as a bordered <div> for student responses.
+A footer section with a copyright notice, centered and in a smaller font size.
+Use Arial, sans-serif for all text, ensure readability with padding and spacing, and apply a light background for the main container. All styles must be written inline within each element.
+
+//////////////////////////////////////////////////////////////// Example 1 //////////////////////////////////////////////////////////////////
+Generate a styled math worksheet in HTML format with the following:
+- A blue **header** with bold white text saying "Mathematics Worksheet".
+- A **yellow instructions box** with a border-radius of 5px.
+- Questions inside a **light gray section** with black text.
+- An **answer section** with a dashed blue border.
+- Footer with small gray italic text.
+
+Include at least three math problems and ensure the HTML structure is properly formatted.
+
+//////////////////////////////////////////////////////////////// Example 2 //////////////////////////////////////////////////////////////////
+Generate a well-structured science worksheet in HTML format with the following styles:
+- A **green header** with bold white text saying "Science Worksheet".
+- A **light orange instructions box** with padding and rounded corners.
+- Questions inside a **white section with a light blue border**.
+- An **answer section** with a solid dark green border.
+- A footer with **small, italicized gray text**.
+
+The worksheet should include at least three questions related to basic physics. Ensure all HTML and styles are properly formatted.
+
+
+//////////////////////////////////////////////////////////////// Example 3 //////////////////////////////////////////////////////////////////
+
+Generate a creative English worksheet in HTML format with the following:
+- A **purple header** with bold white text saying "English Language Worksheet".
+- A **light pink instructions box** with a border and shadow effect.
+- Questions inside a **light gray section** with black text.
+- The **answer section** should have a dashed red border.
+- The footer should have **small, italicized dark gray text**.
+
+Include three English grammar exercises. Ensure the HTML and styles are properly formatted.
