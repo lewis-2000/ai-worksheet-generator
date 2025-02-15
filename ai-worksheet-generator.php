@@ -116,8 +116,8 @@ class AI_Worksheet_Generator
             <h2>AI Worksheet Generator</h2>
 
             <!-- Tab Navigation -->
-            <ul class="nav-tab-wrapper mb-2">
-                <li><a href="#" class="nav-tab nav-tab-active" data-tab="settings">Settings</a></li>
+            <ul class="nav-tab-wrapper">
+                <li><a href="#" class="nav-tab  nav-tab-active" data-tab="settings">Settings</a></li>
                 <li><a href="#" class="nav-tab" data-tab="content">Content</a></li>
                 <li><a href="#" class="nav-tab" data-tab="statistics">Statistics</a></li>
                 <li><a href="#" class="nav-tab" data-tab="docs">Documentation</a></li>
@@ -127,8 +127,16 @@ class AI_Worksheet_Generator
             <!-- Tab Content -->
             <div class="tab-content">
                 <!-- Settings Tab -->
-                <div id="settings" class="tab-pane active">
-                    <h3>API Key Settings</h3>
+                <div class="p-6 mb-4 bg-white shadow-lg rounded-lg">
+                    <p class="text-lg text-gray-700 mb-2">
+                        <strong class="font-semibold">Powered by Gemini AI</strong>
+                    </p>
+                    <p class="text-lg text-gray-700">
+                        Model being used is <strong class="font-semibold">Gemini Pro</strong>
+                    </p>
+                </div>
+
+                <div id="settings" class="tab-pane active p-6">
                     <form method="post" action="options.php">
                         <?php
                         settings_fields('awg_settings_group');
@@ -137,161 +145,177 @@ class AI_Worksheet_Generator
                         ?>
                     </form>
                 </div>
+            </div>
 
-                <!-- Content Tab -->
-                <div id="content" class="tab-pane">
-                    <h3>Manage Templates & Premade Worksheets</h3>
-                    <form method="post" enctype="multipart/form-data">
-                        <label for="template_name">Name:</label>
-                        <input type="text" name="template_name" required>
 
-                        <label for="template_type">Type:</label>
-                        <select name="template_type">
-                            <option value="template">Template</option>
-                            <option value="premadeworksheet">Premade Worksheet</option>
-                        </select>
+            <!-- Content Tab -->
+            <div id="content" class="tab-pane">
+                <h3>Manage Templates & Premade Worksheets</h3>
+                <form method="post" enctype="multipart/form-data">
+                    <label for="template_name">Name:</label>
+                    <input type="text" name="template_name" required>
 
-                        <label for="template_category">Category:</label>
-                        <select name="template_category">
-                            <option value="math">Math</option>
-                            <option value="science">Science</option>
-                            <option value="history">History</option>
-                            <option value="language">Language</option>
-                            <option value="other">Other</option>
-                        </select>
+                    <label for="template_type">Type:</label>
+                    <select name="template_type">
+                        <option value="template">Template</option>
+                        <option value="premadeworksheet">Premade Worksheet</option>
+                    </select>
 
-                        <label for="template_file">Upload HTML File:</label>
-                        <input type="file" name="template_file" accept=".html" required>
+                    <label for="template_category">Category:</label>
+                    <select name="template_category">
+                        <option value="math">Math</option>
+                        <option value="science">Science</option>
+                        <option value="history">History</option>
+                        <option value="language">Language</option>
+                        <option value="other">Other</option>
+                    </select>
 
-                        <label for="template_image">Upload Preview Image:</label>
-                        <input type="file" name="template_image" accept="image/*" required>
+                    <label for="template_file">Upload HTML File:</label>
+                    <input type="file" name="template_file" accept=".html" required>
 
-                        <input type="submit" name="upload_template" value="Upload">
-                    </form>
+                    <label for="template_image">Upload Preview Image:</label>
+                    <input type="file" name="template_image" accept="image/*" required>
 
-                    <!-- Display Existing Templates -->
-                    <h3>Existing Templates & Worksheets</h3>
-                    <ul>
-                        <?php
-                        $templates = get_option('awg_templates', []);
-                        foreach ($templates as $template) {
-                            echo "<li>{$template['name']} ({$template['type']} - {$template['category']}) - 
+                    <input type="submit" name="upload_template" value="Upload">
+                </form>
+
+                <!-- Display Existing Templates -->
+                <h3>Existing Templates & Worksheets</h3>
+                <ul>
+                    <?php
+                    $templates = get_option('awg_templates', []);
+                    foreach ($templates as $template) {
+                        echo "<li>{$template['name']} ({$template['type']} - {$template['category']}) - 
                             <a href='{$template['file']}'>View</a> | 
                             <img src='{$template['image']}' width='50'></li>";
+                    }
+                    ?>
+                </ul>
+            </div>
+
+            <!-- Statistics Tab -->
+            <div id="statistics" class="tab-pane p-6">
+                <h3 class="text-2xl font-semibold text-gray-900 mb-4">Usage & Payment Statistics</h3>
+                <table class="wp-list-table widefat striped mt-2 border border-gray-300">
+                    <thead class="bg-blue-100">
+                        <tr>
+                            <th class="px-4 py-2 text-left">User</th>
+                            <th class="px-4 py-2 text-left">Usage</th>
+                            <th class="px-4 py-2 text-left">Payment Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php
+                        global $wpdb;
+
+                        // Fetch logged-in users from session tokens
+                        $sessions = $wpdb->get_col("
+                SELECT user_id FROM {$wpdb->usermeta} 
+                WHERE meta_key = 'session_tokens'
+            ");
+
+                        if (!empty($sessions)) {
+                            $users = get_users(['include' => $sessions]);
+
+                            foreach ($users as $user) {
+                                // Fetch user meta for usage and payment status
+                                $usage_count = get_user_meta($user->ID, 'usage_count', true) ?: '0';
+                                $payment_status = get_user_meta($user->ID, 'payment_status', true) ?: 'Unpaid';
+
+                                echo "<tr class='hover:bg-blue-50'>
+                        <td class='px-4 py-2'>{$user->display_name}</td>
+                        <td class='px-4 py-2'>{$usage_count} worksheets</td>
+                        <td class='px-4 py-2'>{$payment_status}</td>
+                    </tr>";
+                            }
+                        } else {
+                            echo "<tr><td colspan='3' class='px-4 py-2 text-center text-gray-500'>No active users</td></tr>";
                         }
                         ?>
-                    </ul>
-                </div>
-
-                <!-- Statistics Tab -->
-                <div id="statistics" class="tab-pane p-6">
-                    <h3 class="text-2xl font-semibold text-gray-900 mb-4">Usage & Payment Statistics</h3>
-                    <table class="wp-list-table widefat fixed striped mt-2 border border-gray-300">
-                        <thead class="bg-blue-100">
-                            <tr>
-                                <th class="px-4 py-2 text-left">User</th>
-                                <th class="px-4 py-2 text-left">Usage</th>
-                                <th class="px-4 py-2 text-left">Payment Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php
-                            $users = get_option('awg_users', []);
-                            if (!empty($users)) {
-                                foreach ($users as $user) {
-                                    echo "<tr class='hover:bg-blue-50'>
-                            <td class='px-4 py-2'>{$user['name']}</td>
-                            <td class='px-4 py-2'>{$user['usage_count']} worksheets</td>
-                            <td class='px-4 py-2'>{$user['payment_status']}</td>
-                        </tr>";
-                                }
-                            } else {
-                                echo "<tr><td colspan='3' class='px-4 py-2 text-center text-gray-500'>No data available</td></tr>";
-                            }
-                            ?>
-                        </tbody>
-                    </table>
-                </div>
-
-
-                <!-- Documentation Tab -->
-                <div id="docs" class="tab-pane p-6">
-                    <h3 class="text-2xl font-semibold text-gray-900 mb-4">Documentation & Help</h3>
-
-                    <p class="text-lg text-gray-700 mb-4">
-                        The AI Worksheet Generator Plugin helps you create AI-powered worksheets directly from your WordPress
-                        site.
-                        The plugin uses <strong>Gemini AI</strong>, specifically the <strong>Gemini Pro model</strong>, to
-                        generate high-quality,
-                        customized worksheets in seconds.
-                    </p>
-
-                    <h4 class="text-xl font-medium text-gray-800 mt-4 mb-2">API Key</h4>
-                    <p class="text-lg text-gray-700 mb-4">
-                        To start using the AI Worksheet Generator, you'll need to provide an API key. This key is essential for
-                        generating
-                        AI-powered worksheets with the Gemini Pro model. Please follow the steps below to configure your API
-                        key:
-                    </p>
-                    <ul class="list-disc pl-6 text-lg text-gray-700 mb-4">
-                        <li>Sign up for an OpenAI account (or other supported AI service, such as Gemini).</li>
-                        <li>Obtain your API key from the service's dashboard.</li>
-                        <li>Navigate to the plugin settings page and enter your API key in the provided field.</li>
-                    </ul>
-
-                    <h4 class="text-xl font-medium text-gray-800 mt-4 mb-2">Shortcode Usage</h4>
-                    <p class="text-lg text-gray-700 mb-4">
-                        The plugin works through a simple shortcode that you can add to any post, page, or widget. To generate a
-                        worksheet,
-                        simply insert the following shortcode where you want the form to appear:
-                    </p>
-                    <pre class="bg-gray-100 p-4 rounded-lg text-gray-800 text-lg mb-4">[awg_generate_html]</pre>
-                    <p class="text-lg text-gray-700 mb-4">
-                        This shortcode will create a form that allows users to interact with the plugin, customize worksheets,
-                        and generate them
-                        directly on the front-end.
-                    </p>
-
-                    <h4 class="text-xl font-medium text-gray-800 mt-4 mb-2">Gemini AI Model</h4>
-                    <p class="text-lg text-gray-700 mb-4">
-                        The plugin utilizes the <strong>Gemini Pro model</strong> for generating AI-powered worksheets. Gemini
-                        is known for its advanced
-                        language processing and ability to tailor content according to user specifications. This ensures that
-                        your worksheets are
-                        high-quality, relevant, and accurately reflect the content you provide.
-                    </p>
-
-                    <h4 class="text-xl font-medium text-gray-800 mt-4 mb-2">GitHub Repository</h4>
-                    <p class="text-lg text-gray-700 mb-4">
-                        For more information, troubleshooting, and updates, please visit the official documentation on GitHub:
-                    </p>
-                    <p>
-                        <a href="https://github.com/your-github-username/ai-worksheet-generator-plugin"
-                            class="text-blue-600 hover:text-blue-700" target="_blank">
-                            https://github.com/your-github-username/ai-worksheet-generator-plugin
-                        </a>
-                    </p>
-
-                    <h4 class="text-xl font-medium text-gray-800 mt-4 mb-2">Questions & Support</h4>
-                    <p class="text-lg text-gray-700 mb-4">
-                        If you have any questions or encounter issues while using the plugin, feel free to check the issues
-                        section or ask your question
-                        directly on the GitHub repository:
-                    </p>
-                    <p>
-                        <a href="https://github.com/your-github-username/ai-worksheet-generator-plugin/issues"
-                            class="text-blue-600 hover:text-blue-700" target="_blank">
-                            https://github.com/your-github-username/ai-worksheet-generator-plugin/issues
-                        </a>
-                    </p>
-
-                    <p class="text-lg text-gray-700 mt-6">
-                        We are always working to improve the plugin. Stay tuned for upcoming updates and new features!
-                    </p>
-                </div>
-
-
+                    </tbody>
+                </table>
             </div>
+
+
+
+            <!-- Documentation Tab -->
+            <div id="docs" class="tab-pane p-6">
+                <h3 class="text-2xl font-semibold text-gray-900 mb-4">Documentation & Help</h3>
+
+                <p class="text-lg text-gray-700 mb-4">
+                    The AI Worksheet Generator Plugin helps you create AI-powered worksheets directly from your WordPress
+                    site.
+                    The plugin uses <strong>Gemini AI</strong>, specifically the <strong>Gemini Pro model</strong>, to
+                    generate high-quality,
+                    customized worksheets in seconds.
+                </p>
+
+                <h4 class="text-xl font-medium text-gray-800 mt-4 mb-2">API Key</h4>
+                <p class="text-lg text-gray-700 mb-4">
+                    To start using the AI Worksheet Generator, you'll need to provide an API key. This key is essential for
+                    generating
+                    AI-powered worksheets with the Gemini Pro model. Please follow the steps below to configure your API
+                    key:
+                </p>
+                <ul class="list-disc pl-6 text-lg text-gray-700 mb-4">
+                    <li>Sign up for an OpenAI account (or other supported AI service, such as Gemini).</li>
+                    <li>Obtain your API key from the service's dashboard.</li>
+                    <li>Navigate to the plugin settings page and enter your API key in the provided field.</li>
+                </ul>
+
+                <h4 class="text-xl font-medium text-gray-800 mt-4 mb-2">Shortcode Usage</h4>
+                <p class="text-lg text-gray-700 mb-4">
+                    The plugin works through a simple shortcode that you can add to any post, page, or widget. To generate a
+                    worksheet,
+                    simply insert the following shortcode where you want the form to appear:
+                </p>
+                <pre class="bg-gray-100 p-4 rounded-lg text-gray-800 text-lg mb-4">[awg_generate_html]</pre>
+                <p class="text-lg text-gray-700 mb-4">
+                    This shortcode will create a form that allows users to interact with the plugin, customize worksheets,
+                    and generate them
+                    directly on the front-end.
+                </p>
+
+                <h4 class="text-xl font-medium text-gray-800 mt-4 mb-2">Gemini AI Model</h4>
+                <p class="text-lg text-gray-700 mb-4">
+                    The plugin utilizes the <strong>Gemini Pro model</strong> for generating AI-powered worksheets. Gemini
+                    is known for its advanced
+                    language processing and ability to tailor content according to user specifications. This ensures that
+                    your worksheets are
+                    high-quality, relevant, and accurately reflect the content you provide.
+                </p>
+
+                <h4 class="text-xl font-medium text-gray-800 mt-4 mb-2">GitHub Repository</h4>
+                <p class="text-lg text-gray-700 mb-4">
+                    For more information, troubleshooting, and updates, please visit the official documentation on GitHub:
+                </p>
+                <p>
+                    <a href="https://github.com/lewis-2000/ai-worksheet-generator" class="text-blue-600 hover:text-blue-700"
+                        target="_blank">
+                        https://github.com/lewis-2000/ai-worksheet-generator
+                    </a>
+                </p>
+
+                <h4 class="text-xl font-medium text-gray-800 mt-4 mb-2">Questions & Support</h4>
+                <p class="text-lg text-gray-700 mb-4">
+                    If you have any questions or encounter issues while using the plugin, feel free to check the issues
+                    section or ask your question
+                    directly on the GitHub repository:
+                </p>
+                <p>
+                    <a href="https://github.com/lewis-2000/ai-worksheet-generator/issues"
+                        class="text-blue-600 hover:text-blue-700" target="_blank">
+                        https://github.com/lewis-2000/ai-worksheet-generator/issues
+                    </a>
+                </p>
+
+                <p class="text-lg text-gray-700 mt-6">
+                    We are always working to improve the plugin. Stay tuned for upcoming updates and new features!
+                </p>
+            </div>
+
+
+        </div>
         </div>
 
         <style>
@@ -937,15 +961,15 @@ class AI_Worksheet_Generator
                                         <li>Provide **sample HTML** for clarity.</li>
                                     </ul>
                                     <pre class="bg-gray-50 p-2 rounded text-xs border text-gray-700">
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    &lt;div class="worksheet"&gt;
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        &lt;h1 style="color: blue;"&gt;Math Worksheet&lt;/h1&gt;
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        &lt;p&gt;Solve the following problems:&lt;/p&gt;
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        &lt;ul&gt;
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            &lt;li&gt;5 + 3 = ?&lt;/li&gt;
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            &lt;li&gt;10 - 4 = ?&lt;/li&gt;
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        &lt;/ul&gt;
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    &lt;/div&gt;
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                </pre>
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            &lt;div class="worksheet"&gt;
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                &lt;h1 style="color: blue;"&gt;Math Worksheet&lt;/h1&gt;
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                &lt;p&gt;Solve the following problems:&lt;/p&gt;
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                &lt;ul&gt;
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    &lt;li&gt;5 + 3 = ?&lt;/li&gt;
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    &lt;li&gt;10 - 4 = ?&lt;/li&gt;
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                &lt;/ul&gt;
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            &lt;/div&gt;
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        </pre>
                                 </div>
 
                                 <textarea id="awg-prompt"
