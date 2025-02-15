@@ -5,12 +5,33 @@
  * Description: Generate AI-powered worksheets.
  * Version:     1.0.1
  * Author:      Lewis Ng'ang'a
- * Author URI:  https://yourwebsite.com
  * License:     GPL2
  */
 
 if (!defined('ABSPATH')) {
     exit; // Prevent direct access
+}
+
+function get_user_pdfs($user_id)
+{
+    $args = array(
+        'post_type' => 'attachment',
+        'post_mime_type' => 'application/pdf',
+        'posts_per_page' => -1,
+        'author' => $user_id,
+    );
+
+    $pdfs = get_posts($args);
+    $user_pdfs = array();
+
+    foreach ($pdfs as $pdf) {
+        $user_pdfs[] = array(
+            'title' => $pdf->post_title,
+            'url' => wp_get_attachment_url($pdf->ID),
+        );
+    }
+
+    return $user_pdfs;
 }
 
 require_once ABSPATH . 'wp-admin/includes/file.php'; // Needed for file handling
@@ -26,15 +47,21 @@ class AI_Worksheet_Generator
 {
 
     private $generated_html;
+    private $temp_user_id;
 
 
     public function enqueue_assets()
     {
         // Enqueue Tailwind CSS from the official CDN
         wp_enqueue_script('tailwind-config', 'https://cdn.tailwindcss.com', array(), null, false);
+        wp_enqueue_script('awg-scripts', plugin_dir_url(file: __FILE__) . 'js/scripts.js', array('jquery'), null, true);
 
         // Add inline script to configure Tailwind before it's used
         wp_add_inline_script('tailwind-config', 'tailwind.config = { theme: { extend: {} } }', 'before');
+
+        //Font awesome cdn
+        wp_enqueue_style('font-awesome', 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css', array(), null, false);
+
         wp_enqueue_style('awg-styles', plugin_dir_url(__FILE__) . 'css/styles.css');
 
     }
@@ -89,10 +116,12 @@ class AI_Worksheet_Generator
             <h2>AI Worksheet Generator</h2>
 
             <!-- Tab Navigation -->
-            <ul class="nav-tab-wrapper">
+            <ul class="nav-tab-wrapper mb-2">
                 <li><a href="#" class="nav-tab nav-tab-active" data-tab="settings">Settings</a></li>
                 <li><a href="#" class="nav-tab" data-tab="content">Content</a></li>
                 <li><a href="#" class="nav-tab" data-tab="statistics">Statistics</a></li>
+                <li><a href="#" class="nav-tab" data-tab="docs">Documentation</a></li>
+
             </ul>
 
             <!-- Tab Content -->
@@ -155,30 +184,113 @@ class AI_Worksheet_Generator
                 </div>
 
                 <!-- Statistics Tab -->
-                <div id="statistics" class="tab-pane">
-                    <h3>Usage & Payment Statistics</h3>
-                    <table class="wp-list-table widefat fixed striped">
-                        <thead>
+                <div id="statistics" class="tab-pane p-6">
+                    <h3 class="text-2xl font-semibold text-gray-900 mb-4">Usage & Payment Statistics</h3>
+                    <table class="wp-list-table widefat fixed striped mt-2 border border-gray-300">
+                        <thead class="bg-blue-100">
                             <tr>
-                                <th>User</th>
-                                <th>Usage</th>
-                                <th>Payment Status</th>
+                                <th class="px-4 py-2 text-left">User</th>
+                                <th class="px-4 py-2 text-left">Usage</th>
+                                <th class="px-4 py-2 text-left">Payment Status</th>
                             </tr>
                         </thead>
                         <tbody>
                             <?php
                             $users = get_option('awg_users', []);
-                            foreach ($users as $user) {
-                                echo "<tr>
-                                        <td>{$user['name']}</td>
-                                        <td>{$user['usage_count']} worksheets</td>
-                                        <td>{$user['payment_status']}</td>
-                                      </tr>";
+                            if (!empty($users)) {
+                                foreach ($users as $user) {
+                                    echo "<tr class='hover:bg-blue-50'>
+                            <td class='px-4 py-2'>{$user['name']}</td>
+                            <td class='px-4 py-2'>{$user['usage_count']} worksheets</td>
+                            <td class='px-4 py-2'>{$user['payment_status']}</td>
+                        </tr>";
+                                }
+                            } else {
+                                echo "<tr><td colspan='3' class='px-4 py-2 text-center text-gray-500'>No data available</td></tr>";
                             }
                             ?>
                         </tbody>
                     </table>
                 </div>
+
+
+                <!-- Documentation Tab -->
+                <div id="docs" class="tab-pane p-6">
+                    <h3 class="text-2xl font-semibold text-gray-900 mb-4">Documentation & Help</h3>
+
+                    <p class="text-lg text-gray-700 mb-4">
+                        The AI Worksheet Generator Plugin helps you create AI-powered worksheets directly from your WordPress
+                        site.
+                        The plugin uses <strong>Gemini AI</strong>, specifically the <strong>Gemini Pro model</strong>, to
+                        generate high-quality,
+                        customized worksheets in seconds.
+                    </p>
+
+                    <h4 class="text-xl font-medium text-gray-800 mt-4 mb-2">API Key</h4>
+                    <p class="text-lg text-gray-700 mb-4">
+                        To start using the AI Worksheet Generator, you'll need to provide an API key. This key is essential for
+                        generating
+                        AI-powered worksheets with the Gemini Pro model. Please follow the steps below to configure your API
+                        key:
+                    </p>
+                    <ul class="list-disc pl-6 text-lg text-gray-700 mb-4">
+                        <li>Sign up for an OpenAI account (or other supported AI service, such as Gemini).</li>
+                        <li>Obtain your API key from the service's dashboard.</li>
+                        <li>Navigate to the plugin settings page and enter your API key in the provided field.</li>
+                    </ul>
+
+                    <h4 class="text-xl font-medium text-gray-800 mt-4 mb-2">Shortcode Usage</h4>
+                    <p class="text-lg text-gray-700 mb-4">
+                        The plugin works through a simple shortcode that you can add to any post, page, or widget. To generate a
+                        worksheet,
+                        simply insert the following shortcode where you want the form to appear:
+                    </p>
+                    <pre class="bg-gray-100 p-4 rounded-lg text-gray-800 text-lg mb-4">[awg_generate_html]</pre>
+                    <p class="text-lg text-gray-700 mb-4">
+                        This shortcode will create a form that allows users to interact with the plugin, customize worksheets,
+                        and generate them
+                        directly on the front-end.
+                    </p>
+
+                    <h4 class="text-xl font-medium text-gray-800 mt-4 mb-2">Gemini AI Model</h4>
+                    <p class="text-lg text-gray-700 mb-4">
+                        The plugin utilizes the <strong>Gemini Pro model</strong> for generating AI-powered worksheets. Gemini
+                        is known for its advanced
+                        language processing and ability to tailor content according to user specifications. This ensures that
+                        your worksheets are
+                        high-quality, relevant, and accurately reflect the content you provide.
+                    </p>
+
+                    <h4 class="text-xl font-medium text-gray-800 mt-4 mb-2">GitHub Repository</h4>
+                    <p class="text-lg text-gray-700 mb-4">
+                        For more information, troubleshooting, and updates, please visit the official documentation on GitHub:
+                    </p>
+                    <p>
+                        <a href="https://github.com/your-github-username/ai-worksheet-generator-plugin"
+                            class="text-blue-600 hover:text-blue-700" target="_blank">
+                            https://github.com/your-github-username/ai-worksheet-generator-plugin
+                        </a>
+                    </p>
+
+                    <h4 class="text-xl font-medium text-gray-800 mt-4 mb-2">Questions & Support</h4>
+                    <p class="text-lg text-gray-700 mb-4">
+                        If you have any questions or encounter issues while using the plugin, feel free to check the issues
+                        section or ask your question
+                        directly on the GitHub repository:
+                    </p>
+                    <p>
+                        <a href="https://github.com/your-github-username/ai-worksheet-generator-plugin/issues"
+                            class="text-blue-600 hover:text-blue-700" target="_blank">
+                            https://github.com/your-github-username/ai-worksheet-generator-plugin/issues
+                        </a>
+                    </p>
+
+                    <p class="text-lg text-gray-700 mt-6">
+                        We are always working to improve the plugin. Stay tuned for upcoming updates and new features!
+                    </p>
+                </div>
+
+
             </div>
         </div>
 
@@ -539,203 +651,328 @@ class AI_Worksheet_Generator
         wp_send_json_success(['pdf_url' => $pdf_url]);
     }
 
+    public function get_user_pdfs($user_id)
+    {
+        // Example: Assuming PDFs are stored as posts of a custom post type "pdf"
+        $args = array(
+            'post_type' => 'pdf', // Change to your custom post type
+            'posts_per_page' => -1,
+            'author' => $user_id, // Filter by author (user ID)
+            'meta_query' => array(
+                array(
+                    'key' => '_pdf_user', // Custom field to store user ID (if applicable)
+                    'value' => $user_id,
+                    'compare' => '=',
+                ),
+            ),
+        );
+
+        $query = new WP_Query($args);
+        $pdfs = array();
+
+        if ($query->have_posts()) {
+            while ($query->have_posts()) {
+                $query->the_post();
+                $pdfs[] = array(
+                    'title' => get_the_title(),
+                    'url' => get_permalink(), // Assuming PDF is linked to the post
+                );
+            }
+            wp_reset_postdata();
+        }
+
+        return $pdfs;
+    }
+
 
 
     public function display_html_response()
     {
         ob_start(); ?>
 
-        <div class="hero-section max-w-5xl mx-auto flex flex-col p-6 shadow-lg rounded-lg">
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
-                <div>
-                    <h1 class="text-4xl font-bold">Create Your Worksheet</h1>
-                    <p class="text-lg text-gray-600 my-4">
-                        Generate AI-powered worksheets or select from our templates to get started quickly.
+        <!-- Hero Section -->
+        <div class="hero-section max-w-6xl mx-auto flex flex-col p-10 shadow-lg rounded-xl bg-white animate-fade-up relative bg-white shadow-lg rounded-xl p-10 before:absolute before:inset-0 
+    before:bg-blue-400 before:blur-lg before:opacity-10 before:rounded-xl before:pointer-events-none">
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
+                <!-- Text Section -->
+                <div class="text-center md:text-left">
+                    <h1 class="text-4xl font-bold text-gray-900 leading-tight mb-5">
+                        AI-Powered Worksheet Creation
+                    </h1>
+                    <p class="text-lg text-gray-700 mb-6">
+                        Generate fully customized worksheets in seconds using AI.
+                        Select a style, define your content, and let AI do the rest—fast, efficient, and tailored to your needs.
                     </p>
-                    <button id="select-template-btn" class="bg-gray-500 text-white px-4 py-2 rounded-lg mr-2">
-                        Start with a Template
-                    </button>
-                    <button id="create-with-ai-btn" class="bg-blue-600 text-white px-4 py-2 rounded-lg">
-                        Create with AI
+                    <button id="create-with-ai-btn"
+                        class="relative z-10 bg-blue-600 text-white text-lg font-medium px-6 py-3 rounded-lg shadow-md hover:bg-blue-700">
+                        Generate with AI
                     </button>
                 </div>
-                <div class="hero-image-container">
-                    <img src="<?php echo plugin_dir_url(__FILE__) . 'images/bgh.png'; ?>" class="w-full rounded-lg object-cover"
+
+                <!-- Image Section -->
+                <div class="relative">
+                    <img src="<?php echo plugin_dir_url(__FILE__) . 'images/bgh.png'; ?>"
+                        class="w-full rounded-lg object-cover shadow-lg transform transition duration-500 hover:scale-105"
                         alt="Worksheet Image">
+                    <div class="absolute top-0 left-0 w-full h-full bg-gradient-to-r from-blue-500 to-transparent 
+                opacity-20 rounded-lg"></div>
                 </div>
             </div>
         </div>
 
 
-        <!-- Template Overlay -->
-        <div id="template-overlay"
-            class="fixed flex flex-col bg-black/30 backdrop-blur-md inset-0 shadow-2xl m-auto container p-3 hidden">
-            <div class="bg-white p-5 rounded-lg shadow-lg w-full max-w-5xl mx-auto relative">
-                <button id="close-overlay" class="absolute top-3 right-3 text-black text-lg">✖</button>
 
-                <h2 class="text-xl font-bold mb-3">Customize Template</h2>
 
-                <div class="flex flex-col md:flex-row gap-4">
-                    <!-- Left Panel: Customization Options -->
-                    <div class="w-full md:w-1/3 p-3 bg-gray-100 rounded-lg shadow">
-                        <label for="template_select" class="block font-medium">Select Template:</label>
-                        <select id="template_select" class="w-full p-2 border rounded">
-                            <option value="">-- Select a Template --</option>
-                            <?php
-                            $templates = get_option('awg_templates', []);
-                            foreach ($templates as $template) {
-                                echo "<option value='{$template['file']}'>" . esc_html($template['name']) . "</option>";
-                            }
-                            ?>
-                        </select>
 
-                        <button id="load_template" class="bg-blue-500 text-white px-4 py-2 rounded-lg w-full mt-2">
-                            Load Template
+
+
+        <div id="ai-overlay"
+            class="fixed z-20 flex-col bg-black/30 backdrop-blur-md inset-0 shadow-2xl m-auto container p-3 hidden animate-fade-up">
+            <!-- Overlay Content -->
+            <div class="bg-white w-full p-4 rounded-lg shadow-lg mx-auto h-full overflow-hidden">
+                <!-- Navigation Bar -->
+                <?php
+                $current_user = wp_get_current_user();
+                $is_logged_in = is_user_logged_in();
+                $google_avatar = get_user_meta($current_user->ID, 'nsl_user_avatar', true); // Nextend Social Login stores the avatar here
+                ?>
+
+                <nav class="flex justify-between items-center bg-gray-100 p-3 rounded-md">
+                    <!-- Tabs (with icons for mobile) -->
+                    <div class="flex space-x-4 items-center">
+                        <button
+                            class="tab-button text-blue-600 text-sm font-semibold items-center space-x-2 hover:bg-gray-200 rounded-md p-2 hidden md:flex"
+                            data-tab="templates">
+                            <i class="fas fa-th text-blue-600"></i>
+                            <span>Premade Templates</span>
+                        </button>
+                        <button
+                            class="tab-button text-blue-600 text-sm font-semibold items-center space-x-2 hover:bg-gray-200 rounded-md p-2 hidden md:flex"
+                            data-tab="worksheets">
+                            <i class="fas fa-file-alt text-blue-600"></i>
+                            <span>Premade Worksheets</span>
+                        </button>
+                        <button
+                            class="tab-button text-blue-600 text-sm font-semibold items-center space-x-2 hover:bg-gray-200 rounded-md p-2 hidden md:flex"
+                            data-tab="ai-generation">
+                            <i class="fas fa-robot text-blue-600"></i>
+                            <span>AI Generation</span>
+                        </button>
+                        <button
+                            class="tab-button text-blue-600 text-sm font-semibold items-center space-x-2 hover:bg-gray-200 rounded-md p-2 hidden md:flex"
+                            data-tab="account">
+                            <i class="fas fa-user-circle text-blue-600"></i>
+                            <span>Account</span>
                         </button>
 
-                        <!-- New Sidebar Below Load Button -->
-                        <div id="editorSidebar" class="w-full p-4 bg-white rounded-lg shadow-md mt-4 hidden">
-                            <h2 class="text-lg font-semibold text-gray-700 mb-2">Edit Element</h2>
-
-                            <label for="elementEditor" class="block font-medium text-gray-600">Text Content:</label>
-                            <textarea id="elementEditor" class="w-full h-24 border p-2 rounded-md"></textarea>
-
-                            <label for="colorPicker" class="block font-medium text-gray-600 mt-2">Text Color:</label>
-                            <input type="color" id="colorPicker" class="w-full h-10 p-1 border rounded-md cursor-pointer">
-
-                            <button id="applyChanges"
-                                class="bg-green-500 text-white px-4 py-2 mt-3 w-full rounded-lg shadow hover:bg-green-600 transition">
-                                Apply Changes
+                        <!-- Icons for smaller screens -->
+                        <div class="flex md:hidden space-x-2">
+                            <button
+                                class="tab-button text-blue-600 text-sm font-semibold flex items-center space-x-2 hover:bg-gray-200"
+                                data-tab="templates">
+                                <i class="fas fa-th text-blue-600"></i>
+                            </button>
+                            <button
+                                class="tab-button text-blue-600 text-sm font-semibold flex items-center space-x-2 hover:bg-gray-200"
+                                data-tab="worksheets">
+                                <i class="fas fa-file-alt text-blue-600"></i>
+                            </button>
+                            <button
+                                class="tab-button text-blue-600 text-sm font-semibold flex items-center space-x-2 hover:bg-gray-200"
+                                data-tab="ai-generation">
+                                <i class="fas fa-robot text-blue-600"></i>
+                            </button>
+                            <button
+                                class="tab-button text-blue-600 text-sm font-semibold flex items-center space-x-2 hover:bg-gray-200"
+                                data-tab="account">
+                                <i class="fas fa-user-circle text-blue-600"></i>
                             </button>
                         </div>
                     </div>
 
-                    <!-- Right Panel: Live Preview -->
-                    <div class="w-full md:w-2/3 p-3 bg-white rounded-lg shadow">
-                        <h3 class="text-lg font-semibold">Template Preview</h3>
-                        <div id="template_preview" class="w-full h-96 border overflow-auto bg-gray-50 p-3 rounded-md shadow">
+                    <div>
+                        <!-- Google Login / User Avatar -->
+                        <div id="google-login" class="flex items-center gap-2 cursor-pointer">
+                            <?php if ($is_logged_in): ?>
+                                <!-- Show user avatar when logged in -->
+                                <div class="flex items-center gap-2 bg-gray-100 px-3 py-1 rounded-lg shadow-sm">
+                                    <img src="<?php echo get_avatar_url($current_user->ID); ?>" alt="Profile"
+                                        class="w-10 h-10 rounded-full shadow-md"> <span class="text-gray-700 font-medium text-sm">
+                                        <?php echo esc_html($current_user->display_name); ?>
+                                    </span>
+                                </div>
+                                <a href="<?php echo wp_logout_url(home_url()); ?>"
+                                    class="bg-red-500 text-white text-sm font-medium px-3 py-1 rounded-md hover:bg-red-600 transition">
+                                    Logout
+                                </a>
+                            <?php else: ?>
+                                <!-- Show Google login button when logged out -->
+                                <a href="http://localhost/mywordpress/wp-login.php?loginSocial=google" data-plugin="nsl"
+                                    data-action="connect" data-redirect="current" data-provider="google" data-popupwidth="600"
+                                    data-popupheight="600">
+                                    <i class="fa-solid fa-circle-user text-blue-500"></i>
+                                </a>
+                            <?php endif; ?>
+                            <!-- Close Button -->
+                            <i id="close-ai-overlay"
+                                class="fa-solid fa-circle-xmark text-md font-semibold rounded-full p-1 text-blue-500">
+                            </i>
+
+
                         </div>
-                    </div>
-                </div>
 
-                <button id="save_template"
-                    class="bg-blue-600 text-white px-4 py-2 rounded-lg mt-3 w-full shadow hover:bg-blue-700 transition">
-                    Save Customized Template
-                </button>
-            </div>
-        </div>
 
-        <div id="ai-overlay" class="fixed flex-col bg-black/30 backdrop-blur-md inset-0 shadow-2xl m-auto container p-3 hidden">
-            <!-- Overlay Content -->
-            <div class="bg-white w-full p-4 rounded-lg shadow-lg mx-auto h-full overflow-y-auto overflow-x-hidden">
-                <!-- Navigation Bar -->
-                <nav class="flex justify-between items-center bg-gray-100 p-3 rounded-md">
-                    <!-- Tabs -->
-                    <div class="flex space-x-4">
-                        <button class="tab-button active px-4 py-2 rounded-md text-gray-700 font-semibold hover:bg-gray-200"
-                            data-tab="templates">
-                            Premade Templates
-                        </button>
-                        <button class="tab-button px-4 py-2 rounded-md text-gray-700 font-semibold hover:bg-gray-200"
-                            data-tab="worksheets">
-                            Premade Worksheets
-                        </button>
-                        <button class="tab-button px-4 py-2 rounded-md text-gray-700 font-semibold hover:bg-gray-200"
-                            data-tab="ai-generation">
-                            AI Generation
-                        </button>
+
                     </div>
 
-                    <!-- Google Login -->
-                    <div id="google-login" class="flex items-center space-x-2 cursor-pointer">
-                        <!-- <img src="google-icon.png" alt="Google" class="w-6 h-6">
-                        <button class="text-blue-600 font-semibold">Sign in with Google</button> -->
-                        <a href="http://localhost/mywordpress/wp-login.php?loginSocial=google" data-plugin="nsl"
-                            data-action="connect" data-redirect="current" data-provider="google" data-popupwidth="600"
-                            data-popupheight="600">
-                            <img src="Image url" alt="" />
-                        </a>
-                    </div>
 
-                    <!-- Close Button -->
-                    <button id="close-ai-overlay" class="text-gray-600 text-2xl">&times;</button>
                 </nav>
 
+
                 <!-- Dynamic Content Area -->
-                <div id="tab-content" class="bg-white p-4 rounded-md mt-2 h-full overflow-y-auto w-full">
+                <div id="tab-content" class="bg-white p-2 rounded-md h-full overflow-y-auto w-full">
                     <!-- Premade Templates Tab -->
-                    <div id="templates" class="tab-content">
-                        <div class="flex gap-4">
+                    <div id="templates" class="tab-content h-full flex flex-col p-4 bg-white rounded-lg shadow-md">
+                        <p class="text-sm font-semibold text-blue-700 mb-2">Customize Template</p>
+
+                        <div class="flex flex-col md:flex-row gap-4 flex-grow">
+                            <!-- Left Panel: Customization Options -->
+                            <div class="w-full md:w-1/3 p-3 bg-gray-50 rounded-md shadow flex flex-col">
+                                <label for="template_select" class="block text-sm text-gray-700 font-medium mb-1">Select
+                                    Template:</label>
+                                <select id="template_select"
+                                    class="w-full p-2 text-sm border rounded-md bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                    <option value="">-- Select a Template --</option>
+                                    <?php
+                                    $templates = get_option('awg_templates', []);
+                                    foreach ($templates as $template) {
+                                        echo "<option value='{$template['file']}'>" . esc_html($template['name']) . "</option>";
+                                    }
+                                    ?>
+                                </select>
+
+                                <button id="load_template"
+                                    class="bg-blue-600 text-white text-sm px-3 py-2 rounded-md mt-3 w-full hover:bg-blue-700 transition">
+                                    Load Template
+                                </button>
+
+                                <!-- Sidebar for Editing -->
+                                <div id="editorSidebar" class="w-full p-2 bg-white rounded-md shadow mt-3 hidden overflow-auto">
+                                    <h3 class="text-sm font-semibold text-gray-700 mb-2">Edit Element</h3>
+
+                                    <label for="elementEditor" class="block text-sm text-gray-600 font-medium">Text
+                                        Content:</label>
+                                    <textarea id="elementEditor"
+                                        class="w-full h-20 text-sm border p-2 rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+
+                                    <label for="colorPicker" class="block text-sm text-gray-600 font-medium mt-2">Text
+                                        Color:</label>
+                                    <input type="color" id="colorPicker"
+                                        class="w-full h-8 p-1 border rounded-md cursor-pointer focus:outline-none">
+
+                                    <button id="applyChanges"
+                                        class="bg-green-600 text-white text-sm px-3 py-2 mt-4 w-full rounded-md shadow hover:bg-green-700 transition">
+                                        Apply Changes
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Right Panel: Live Preview -->
+                            <div class="w-full md:w-2/3 p-3 bg-white rounded-md shadow flex flex-col">
+                                <h3 class="text-sm font-semibold text-gray-800 mb-2">Template Preview</h3>
+                                <div id="template_preview"
+                                    class="w-full flex-grow border bg-gray-100 p-2 rounded-md shadow-sm overflow-auto text-sm">
+                                    <!-- Live preview content will be injected here -->
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Save Button -->
+                        <button id="save_template"
+                            class="bg-blue-600 text-white text-sm px-4 py-2 rounded-md mt-4 w-full shadow hover:bg-blue-700 transition">
+                            Save Customized Template
+                        </button>
+                    </div>
+
+                    <!-- Premade Worksheets Tab -->
+                    <div id="worksheets" class="tab-content hidden p-4 bg-white rounded-lg shadow-md">
+                        <div class="flex flex-col md:flex-row gap-3">
                             <!-- Grid of Templates -->
-                            <div id="template-grid" class="grid grid-cols-3 h-auto gap-4 w-2/3">
+                            <div id="template-grid"
+                                class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 w-full md:w-2/3">
                                 <!-- Templates are injected here by JavaScript -->
                             </div>
 
                             <!-- Preview Section -->
-                            <div class="w-1/3 h-auto bg-gray-100 p-4 rounded-md">
-                                <h3 class="text-lg font-semibold mb-2">Template Preview</h3>
+                            <div class="w-full md:w-1/3 h-auto bg-gray-50 p-3 rounded-md shadow-sm">
+                                <h3 class="text-sm font-semibold mb-2 text-blue-700">Template Preview</h3>
                                 <img id="template-preview"
                                     src="<?php echo plugin_dir_url(__FILE__) . 'images/placeholder.png'; ?>" alt="Preview"
-                                    class="w-full rounded-md border">
-                                <p id="template-name" class="text-center mt-2 text-gray-700">Select a template</p>
+                                    class="w-full rounded-md border mb-2 shadow-sm">
+                                <p id="template-name" class="text-center text-sm text-gray-500">Select a template</p>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Premade Worksheets Tab -->
-                    <div id="worksheets" class="tab-content hidden">
-                        <p class="text-gray-700">Worksheets content here...</p>
-                        <div class="wp-block-algori-pdf-viewer-block-algori-pdf-viewer"><iframe
-                                class="wp-block-algori-pdf-viewer-block-algori-pdf-viewer-iframe"
-                                src="http://localhost/mywordpress/wp-content/plugins/algori-pdf-viewer/dist/web/viewer.html?file=http%3A%2F%2Flocalhost%2Fmywordpress%2Fwp-content%2Fuploads%2F2025%2F02%2F1739602797.pdf"
-                                style="width:600px;height:300px"></iframe></div>
-                    </div>
+
 
                     <!-- AI Generation Tab -->
                     <div id="ai-generation" class="tab-content hidden overflow-auto h-full">
                         <div
-                            class="ai-content flex flex-col md:flex-row gap-4 p-4 bg-gray-100 rounded-lg shadow-lg h-full md:overflow-y-auto">
+                            class="ai-content flex flex-col md:flex-row gap-4 p-3 bg-gray-100 rounded-md shadow-md h-full md:overflow-y-auto">
 
                             <!-- AI Input Section -->
-                            <div class="ai-input-section w-full md:w-1/2 bg-white p-4 rounded-lg shadow-md flex flex-col">
-                                <h2 class="text-lg font-semibold mb-3">Enter Your Prompt</h2>
+                            <div class="ai-input-section w-full md:w-1/2 bg-white p-3 rounded-md shadow-sm flex flex-col">
+                                <h2 class="text-sm font-semibold mb-2 text-gray-700">Enter Your Prompt</h2>
 
                                 <!-- Guidelines Section -->
-                                <div class="bg-blue-50 border-l-4 border-blue-500 p-3 rounded-md mb-3">
+                                <div class="bg-blue-50 border-l-4 border-blue-500 p-2 rounded-md mb-2 text-sm">
                                     <h3 class="text-blue-700 font-semibold">Guidelines:</h3>
-                                    <ul class="list-disc pl-5 text-sm text-gray-700">
-                                        <li>Specify the topic clearly.</li>
-                                        <li>Define the number and type of questions.</li>
-                                        <li>Mention difficulty level (Beginner, Intermediate, Advanced).</li>
-                                        <li>Request additional elements like solutions or explanations.</li>
+                                    <p class="text-gray-700">Clearly define the worksheet layout, structure, and colors. Use
+                                        HTML where possible.</p>
+                                    <ul class="list-disc pl-5 text-gray-700">
+                                        <li>Specify **sections**: **Header, Questions, Answers, Footer**.</li>
+                                        <li>Define **colors**: Background, text, table borders.</li>
+                                        <li>Provide **sample HTML** for clarity.</li>
                                     </ul>
+                                    <pre class="bg-gray-50 p-2 rounded text-xs border text-gray-700">
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    &lt;div class="worksheet"&gt;
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        &lt;h1 style="color: blue;"&gt;Math Worksheet&lt;/h1&gt;
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        &lt;p&gt;Solve the following problems:&lt;/p&gt;
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        &lt;ul&gt;
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            &lt;li&gt;5 + 3 = ?&lt;/li&gt;
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            &lt;li&gt;10 - 4 = ?&lt;/li&gt;
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        &lt;/ul&gt;
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    &lt;/div&gt;
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                </pre>
                                 </div>
 
                                 <textarea id="awg-prompt"
-                                    class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 resize-none min-h-[130px] flex-1"
-                                    placeholder="Example: \n- Topic: College-Level Grammar\n- Questions: 5 sentence correction + 5 fill-in-the-blanks\n- Difficulty: Advanced\n- Include an explanation for answers"></textarea>
+                                    class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 resize-none min-h-[110px] flex-1 text-sm"
+                                    placeholder="Example: Define colors, sections, and layout in HTML..."></textarea>
                                 <button id="awg-generate-btn"
-                                    class="w-full mt-2 bg-blue-500 text-white py-2 px-4 rounded-md hover:bg-blue-600 transition">
+                                    class="w-full mt-2 bg-blue-500 text-white py-2 px-3 rounded-md hover:bg-blue-600 transition text-sm">
                                     Generate Worksheet
                                 </button>
                             </div>
 
                             <!-- AI Preview Section -->
                             <div
-                                class="ai-preview-section w-full md:w-1/2 bg-white p-4 rounded-lg shadow-md relative flex flex-col">
-                                <h2 class="text-lg font-semibold mb-3">Preview</h2>
+                                class="ai-preview-section w-full md:w-1/2 bg-white p-3 rounded-md shadow-sm relative flex flex-col">
+                                <h2 class="text-sm font-semibold mb-2 text-gray-700">Preview</h2>
 
                                 <!-- Download & Print Strip -->
                                 <div id="awg-action-strip"
-                                    class="hidden  justify-between items-center bg-gray-200 p-2 rounded-md mb-3">
+                                    class="hidden justify-between items-center bg-gray-200 p-2 rounded-md mb-2 text-sm">
                                     <span class="text-gray-700 font-medium">Download or Print:</span>
                                     <div class="flex gap-2">
                                         <button id="awg-print-btn"
-                                            class="bg-blue-500 text-white px-3 py-1 rounded-md hover:bg-blue-600">
+                                            class="bg-blue-500 text-white px-3 py-1 rounded-md hover:bg-blue-600 text-sm">
                                             Print
                                         </button>
                                         <a id="awg-download-pdf"
-                                            class="bg-green-500 text-white px-3 py-1 rounded-md hover:bg-green-600 transition"
+                                            class="bg-green-500 text-white px-3 py-1 rounded-md hover:bg-green-600 transition text-sm"
                                             href="#" target="_blank" download>
                                             Download PDF
                                         </a>
@@ -744,26 +981,94 @@ class AI_Worksheet_Generator
 
                                 <!-- Live Preview with Loading -->
                                 <div id="awg-html-output"
-                                    class="preview-box border border-gray-300 p-3 rounded-md flex-1 bg-gray-50 flex justify-center items-center relative overflow-auto">
+                                    class="preview-box border border-gray-300 p-2 rounded-md flex-1 bg-gray-50 flex justify-center items-center relative overflow-auto">
                                     <img id="awg-placeholder"
                                         src="<?php echo plugin_dir_url(__FILE__) . 'images/placeholder.png'; ?>"
                                         alt="Worksheet Preview Placeholder" class="max-w-full h-auto">
                                     <div id="awg-loading" class="absolute hidden">
                                         <div
-                                            class="animate-spin inline-block w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full">
+                                            class="animate-spin inline-block w-6 h-6 border-4 border-blue-500 border-t-transparent rounded-full">
                                         </div>
-                                        <p class="mt-2 text-gray-600">Generating worksheet...</p>
+                                        <p class="mt-2 text-gray-600 text-sm">Generating worksheet...</p>
                                     </div>
                                 </div>
 
                                 <!-- PDF Container -->
-                                <div id="awg-pdf-container" class="mt-3 hidden">
-                                    <h3 class="text-center text-md font-semibold">Generated Worksheet PDF</h3>
-                                    <iframe id="awg-pdf-frame" class="w-full h-[500px] border-none"></iframe>
+                                <div id="awg-pdf-container" class="mt-2 hidden">
+                                    <h3 class="text-center text-sm font-semibold text-gray-700">Generated Worksheet PDF</h3>
+                                    <iframe id="awg-pdf-frame" class="w-full h-[400px] border-none"></iframe>
                                 </div>
                             </div>
                         </div>
                     </div>
+
+                    <!-- Account Tab -->
+                    <div id="account" class="tab-content hidden p-4 bg-white rounded-lg shadow-md h-auto">
+                        <?php if (is_user_logged_in()):
+                            $current_user = wp_get_current_user();
+                            $user_pdfs = get_user_pdfs($current_user->ID); // Fetch user's PDFs
+                            ?>
+                            <!-- Logged-in User Section -->
+                            <div class="flex items-center gap-3 border-b pb-3 mb-3">
+                                <img src="<?php echo get_avatar_url($current_user->ID); ?>" alt="Profile"
+                                    class="w-12 h-12 rounded-full shadow-md">
+                                <div>
+                                    <p class="text-blue-600 font-semibold text-sm">
+                                        <?php echo esc_html($current_user->display_name); ?>
+                                    </p>
+                                    <p class="text-gray-500 text-xs">Payment Status: <strong class="text-blue-500">Pending</strong>
+                                    </p>
+                                </div>
+                            </div>
+
+                            <!-- PDF List -->
+                            <h3 class="text-sm font-semibold text-gray-700 mb-2">Your Generated PDFs</h3>
+                            <?php if (!empty($user_pdfs)): ?>
+                                <ul class="space-y-2 text-sm">
+                                    <?php foreach ($user_pdfs as $pdf): ?>
+                                        <li class="flex items-center gap-2 bg-gray-100 p-2 rounded-md shadow-sm">
+                                            <span class="text-gray-600 truncate"><?php echo esc_html($pdf['title']); ?></span>
+                                            <a href="<?php echo esc_url($pdf['url']); ?>" target="_blank"
+                                                class="text-blue-500 text-xs font-medium hover:underline">View</a>
+                                        </li>
+                                    <?php endforeach; ?>
+                                </ul>
+                            <?php else: ?>
+                                <p class="text-xs text-gray-500">You have not generated any PDFs yet.</p>
+                            <?php endif; ?>
+
+                            <!-- Upgrade Button -->
+                            <button id="upgrade-account-btn"
+                                class="bg-blue-500 text-white text-sm px-3 py-1.5 rounded-lg mt-3 hover:bg-blue-600 transition">
+                                Upgrade Account
+                            </button>
+
+                        <?php else: ?>
+                            <!-- Not Logged-in Section -->
+                            <div class="text-center">
+                                <p class="text-sm text-gray-600 mb-2">Login is free and allows you to store and manage your
+                                    generated PDFs.</p>
+
+
+                                <div class="w-full border-b mt-4 mb-4 flex flex-col items-center">
+                                    <!-- Show Google login button when logged out -->
+                                    <a href="http://localhost/mywordpress/wp-login.php?loginSocial=google" data-plugin="nsl"
+                                        data-action="connect" data-redirect="current" data-provider="google" data-popupwidth="600"
+                                        data-popupheight="600">
+                                        <i class="fa-solid fa-circle-user text-4xl text-blue-500"></i>
+                                    </a>
+
+                                    <p class="text-sm text-gray-500 mt-2">Don't have a Google account?</p>
+                                </div>
+
+                            <?php endif; ?>
+
+                        </div>
+
+
+
+                    </div>
+
 
 
                 </div>
@@ -828,14 +1133,18 @@ class AI_Worksheet_Generator
 
                     templates.forEach(template => {
                         const card = document.createElement('div');
-                        card.className = "template-card bg-white p-3 h-fit rounded-lg shadow hover:shadow-lg transition-all cursor-pointer";
+                        card.className = "template-card bg-white p-2 rounded-md shadow-sm hover:shadow-md transition-all cursor-pointer border border-gray-200 hover:border-blue-500";
+
                         card.setAttribute('data-template', template.name);
 
-                        card.innerHTML = `<img src="${template.image}" alt="${template.name}" class="w-full h-32 object-cover rounded-md border border-gray-300">
-                                            <p class="text-center mt-2 font-medium text-gray-800">${template.name.replace('template-', 'Template ').replace('premadeworksheet-', 'Worksheet ')}</p> `;
+                        card.innerHTML = `
+                            <img src="${template.image}" alt="${template.name}" class="w-full h-28 object-cover rounded-md border border-gray-300">
+                            <p class="text-center mt-2 text-sm font-semibold text-gray-700">${template.name.replace('template-', 'Template ').replace('premadeworksheet-', 'Worksheet ')}</p>
+                        `;
 
                         templateGrid.appendChild(card);
                     });
+
                 }
 
                 // Initialize functions
@@ -910,9 +1219,9 @@ class AI_Worksheet_Generator
                 const body = document.body;
 
                 // Template Overlay Elements
-                const templateOverlay = document.getElementById("template-overlay");
-                const openBtn = document.getElementById("select-template-btn");
-                const closeBtn = document.getElementById("close-overlay");
+                // const templateOverlay = document.getElementById("template-overlay");
+                // const openBtn = document.getElementById("select-template-btn");
+                // const closeBtn = document.getElementById("close-overlay");
 
                 // Template Selection
                 const templateSelect = document.getElementById("template_select");
@@ -929,16 +1238,16 @@ class AI_Worksheet_Generator
                 let selectedElement = null; // Stores clicked element
 
                 // 🚀 Open Overlay
-                openBtn.addEventListener("click", () => {
-                    templateOverlay.classList.remove("hidden");
-                    body.classList.add("no-scroll");
-                });
+                // openBtn.addEventListener("click", () => {
+                //     templateOverlay.classList.remove("hidden");
+                //     body.classList.add("no-scroll");
+                // });
 
-                // ❌ Close Overlay
-                closeBtn.addEventListener("click", () => {
-                    templateOverlay.classList.add("hidden");
-                    body.classList.remove("no-scroll");
-                });
+                // // ❌ Close Overlay
+                // closeBtn.addEventListener("click", () => {
+                //     templateOverlay.classList.add("hidden");
+                //     body.classList.remove("no-scroll");
+                // });
 
                 // 🎯 Load Template into Preview
                 loadButton.addEventListener("click", function () {
