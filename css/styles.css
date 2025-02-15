@@ -1,3 +1,43 @@
+/* Settings Page */
+
+.nav-tab-wrapper {
+  border-bottom: 1px solid #ccc;
+  padding-bottom: 5px;
+}
+
+.nav-tab {
+  display: inline-block;
+  padding: 10px 15px;
+  text-decoration: none;
+  color: #0073aa;
+  border: 1px solid transparent;
+  border-bottom: none;
+  background: #f1f1f1;
+  cursor: pointer;
+  transition: 0.3s;
+}
+
+.nav-tab:hover {
+  background: #e0e0e0;
+}
+
+.nav-tab-active {
+  background: #fff;
+  border: 1px solid #ccc;
+  border-bottom: 1px solid #fff;
+}
+
+.tab-pane {
+  display: none;
+  padding: 20px;
+  background: #fff;
+  border: 1px solid #ccc;
+}
+
+.tab-pane.active {
+  display: block;
+}
+
 /* Hero Section */
 .hero-section {
   box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3); /* Slightly stronger shadow */
