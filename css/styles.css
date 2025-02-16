@@ -54,7 +54,7 @@
 }
 
 /* Hero Section */
-.hero-section {
+.hero-sm-section {
   box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3); /* Slightly stronger shadow */
   padding: 5px 20px;
   border-radius: 10px;
@@ -65,7 +65,7 @@
 }
 
 /* Container for the hero image */
-.hero-image-container {
+.hero-sm-image-container {
   overflow: hidden; /* Prevents the image from overflowing */
 }
 

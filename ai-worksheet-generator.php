@@ -92,6 +92,16 @@ class AI_Worksheet_Generator
         });
 
         add_action('wp_ajax_nopriv_fetch_generated_html', [$this, 'fetch_generated_html']); // Allow non-logged-in users if needed
+
+        //Cart
+        add_action('wp_ajax_awg_add_to_cart', 'awg_add_to_cart');
+        add_action('wp_ajax_nopriv_awg_add_to_cart', 'awg_add_to_cart');
+        add_action('wp_ajax_awg_remove_from_cart', 'awg_remove_from_cart');
+        add_action('wp_ajax_nopriv_awg_remove_from_cart', 'awg_remove_from_cart');
+        add_action('wp_ajax_awg_checkout', 'awg_checkout');
+
+
+        //Shortcodes
         add_shortcode('awg_generate_html', array($this, 'display_html_response'));
         add_shortcode('awg_view_pdf', array($this, 'view_pdf'));
     }
@@ -181,13 +191,12 @@ class AI_Worksheet_Generator
 
                 <!-- Display Existing Templates -->
                 <h3>Existing Templates & Worksheets</h3>
+
                 <ul>
                     <?php
                     $templates = get_option('awg_templates', []);
                     foreach ($templates as $template) {
-                        echo "<li>{$template['name']} ({$template['type']} - {$template['category']}) - 
-                            <a href='{$template['file']}'>View</a> | 
-                            <img src='{$template['image']}' width='50'></li>";
+                        echo "<li>{$template['name']} ({$template['type']}) - <a href='{$template['file']}'>View</a> | <img src='{$template['image']}' width='50'></li>";
                     }
                     ?>
                 </ul>
@@ -449,18 +458,25 @@ class AI_Worksheet_Generator
                     $file_url = wp_get_attachment_url($file_id);
                     $image_url = wp_get_attachment_url($image_id);
 
+                    // Ensure templates is an array
                     $templates = get_option('awg_templates', []);
+                    if (!is_array($templates)) {
+                        $templates = []; // Convert to an array if it's a string or something else
+                    }
+
                     $templates[] = [
                         'name' => $prefix . $name,
                         'type' => $type,
                         'file' => $file_url,
                         'image' => $image_url
                     ];
+
                     update_option('awg_templates', $templates);
                 }
             }
         }
     }
+
 
 
 
@@ -709,13 +725,125 @@ class AI_Worksheet_Generator
     }
 
 
+    // Cart and Payment System
+    function awg_add_to_cart()
+    {
+        session_start();
+
+        $worksheet = [
+            'id' => sanitize_text_field($_POST['worksheet_id']),
+            'name' => sanitize_text_field($_POST['worksheet_name']),
+            'price' => sanitize_text_field($_POST['worksheet_price']),
+            'url' => esc_url($_POST['worksheet_url'])
+        ];
+
+        if (is_user_logged_in()) {
+            $user_id = get_current_user_id();
+            $cart = get_user_meta($user_id, 'awg_cart', true) ?: [];
+            $cart[] = $worksheet;
+            update_user_meta($user_id, 'awg_cart', $cart);
+        } else {
+            $_SESSION['awg_cart'][] = $worksheet;
+        }
+
+        wp_send_json_success(['message' => 'Worksheet added to cart']);
+    }
+
+    function awg_remove_from_cart()
+    {
+        session_start();
+
+        $worksheet_id = sanitize_text_field($_POST['worksheet_id']);
+
+        if (is_user_logged_in()) {
+            $user_id = get_current_user_id();
+            $cart = get_user_meta($user_id, 'awg_cart', true) ?: [];
+            $cart = array_filter($cart, function ($item) use ($worksheet_id) {
+                return $item['id'] !== $worksheet_id;
+            });
+            update_user_meta($user_id, 'awg_cart', array_values($cart));
+        } else {
+            $_SESSION['awg_cart'] = array_filter($_SESSION['awg_cart'], function ($item) use ($worksheet_id) {
+                return $item['id'] !== $worksheet_id;
+            });
+        }
+
+        wp_send_json_success(['message' => 'Worksheet removed from cart']);
+    }
+
+    function awg_check_subscription()
+    {
+        $user_id = get_current_user_id();
+        $subscribed = get_user_meta($user_id, 'awg_subscription', true);
+        return !empty($subscribed);
+    }
+
+    function awg_deduct_credit($user_id, $amount)
+    {
+        $credits = get_user_meta($user_id, 'awg_credits', true) ?: 0;
+        if ($credits >= $amount) {
+            update_user_meta($user_id, 'awg_credits', $credits - $amount);
+            return true;
+        }
+        return false;
+    }
+
+    function awg_checkout()
+    {
+        if (!is_user_logged_in()) {
+            wp_send_json_error(['message' => 'You must be logged in.']);
+        }
+
+        $user_id = get_current_user_id();
+        $cart = get_user_meta($user_id, 'awg_cart', true);
+        $credit_cost = count($cart);
+
+        if ($this->awg_check_subscription()) {
+            update_user_meta($user_id, 'awg_cart', []);
+            wp_send_json_success(['message' => 'Checkout successful!']);
+        } elseif ($this->awg_deduct_credit($user_id, $credit_cost)) {
+            update_user_meta($user_id, 'awg_cart', []);
+            wp_send_json_success(['message' => 'Checkout successful!']);
+        } else {
+            wp_send_json_error(['message' => 'Insufficient credits.']);
+        }
+
+        if (!is_user_logged_in() && !$this->awg_can_guest_download()) {
+            wp_send_json_error(['message' => 'You have used your free download.']);
+        }
+        $this->awg_track_guest_download();
+
+    }
+
+
+    // Track Guest Downloads
+
+    function awg_track_guest_download()
+    {
+        session_start();
+        $_SESSION['awg_free_downloads'] = ($_SESSION['awg_free_downloads'] ?? 0) + 1;
+    }
+
+    //Check If Guest Can Download
+    function awg_can_guest_download()
+    {
+        session_start();
+        return ($_SESSION['awg_free_downloads'] ?? 0) < 1;
+    }
+
+
+
+
+
+
+
 
     public function display_html_response()
     {
         ob_start(); ?>
 
         <!-- Hero Section -->
-        <div class="hero-section max-w-6xl mx-auto flex flex-col p-10 shadow-lg rounded-xl bg-white animate-fade-up relative bg-white shadow-lg rounded-xl p-10 before:absolute before:inset-0 
+        <div class="hero-sm-section max-w-6xl mx-auto flex flex-col p-10 shadow-lg rounded-xl bg-white animate-fade-up relative bg-white shadow-lg rounded-xl p-10 before:absolute before:inset-0 
     before:bg-blue-400 before:blur-lg before:opacity-10 before:rounded-xl before:pointer-events-none">
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
@@ -754,108 +882,109 @@ class AI_Worksheet_Generator
         <div id="ai-overlay"
             class="fixed z-20 flex-col bg-black/30 backdrop-blur-md inset-0 shadow-2xl m-auto container p-3 hidden animate-fade-up">
             <!-- Overlay Content -->
-            <div class="bg-white w-full p-4 rounded-lg shadow-lg mx-auto h-full overflow-hidden">
-                <!-- Navigation Bar -->
-                <?php
-                $current_user = wp_get_current_user();
-                $is_logged_in = is_user_logged_in();
-                $google_avatar = get_user_meta($current_user->ID, 'nsl_user_avatar', true); // Nextend Social Login stores the avatar here
-                ?>
+            <!-- Navigation Bar -->
+            <?php
+            $current_user = wp_get_current_user();
+            $is_logged_in = is_user_logged_in();
+            $google_avatar = get_user_meta($current_user->ID, 'nsl_user_avatar', true); // Nextend Social Login stores the avatar here
+            ?>
 
-                <nav class="flex justify-between items-center bg-gray-100 p-3 rounded-md">
-                    <!-- Tabs (with icons for mobile) -->
-                    <div class="flex space-x-4 items-center">
+            <nav class="flex justify-between items-center bg-gray-100 p-3 rounded-md rounded-t-lg rounded-b-none">
+                <!-- Tabs (with icons for mobile) -->
+                <div class="flex space-x-4 items-center">
+                    <button
+                        class="tab-button text-blue-600 text-sm font-semibold items-center space-x-2 hover:bg-gray-200 rounded-md p-2 hidden md:flex"
+                        data-tab="templates">
+                        <i class="fas fa-th text-blue-600"></i>
+                        <span>Premade Templates</span>
+                    </button>
+                    <button
+                        class="tab-button text-blue-600 text-sm font-semibold items-center space-x-2 hover:bg-gray-200 rounded-md p-2 hidden md:flex"
+                        data-tab="worksheets">
+                        <i class="fas fa-file-alt text-blue-600"></i>
+                        <span>Premade Worksheets</span>
+                    </button>
+                    <button
+                        class="tab-button text-blue-600 text-sm font-semibold items-center space-x-2 hover:bg-gray-200 rounded-md p-2 hidden md:flex"
+                        data-tab="ai-generation">
+                        <i class="fas fa-robot text-blue-600"></i>
+                        <span>AI Generation</span>
+                    </button>
+                    <button
+                        class="tab-button text-blue-600 text-sm font-semibold items-center space-x-2 hover:bg-gray-200 rounded-md p-2 hidden md:flex"
+                        data-tab="account">
+                        <i class="fas fa-user-circle text-blue-600"></i>
+                        <span>Account</span>
+                    </button>
+
+                    <!-- Icons for smaller screens -->
+                    <div class="flex md:hidden space-x-2">
                         <button
-                            class="tab-button text-blue-600 text-sm font-semibold items-center space-x-2 hover:bg-gray-200 rounded-md p-2 hidden md:flex"
+                            class="tab-button text-blue-600 text-sm font-semibold flex items-center space-x-2 hover:bg-gray-200"
                             data-tab="templates">
                             <i class="fas fa-th text-blue-600"></i>
-                            <span>Premade Templates</span>
                         </button>
                         <button
-                            class="tab-button text-blue-600 text-sm font-semibold items-center space-x-2 hover:bg-gray-200 rounded-md p-2 hidden md:flex"
+                            class="tab-button text-blue-600 text-sm font-semibold flex items-center space-x-2 hover:bg-gray-200"
                             data-tab="worksheets">
                             <i class="fas fa-file-alt text-blue-600"></i>
-                            <span>Premade Worksheets</span>
                         </button>
                         <button
-                            class="tab-button text-blue-600 text-sm font-semibold items-center space-x-2 hover:bg-gray-200 rounded-md p-2 hidden md:flex"
+                            class="tab-button text-blue-600 text-sm font-semibold flex items-center space-x-2 hover:bg-gray-200"
                             data-tab="ai-generation">
                             <i class="fas fa-robot text-blue-600"></i>
-                            <span>AI Generation</span>
                         </button>
                         <button
-                            class="tab-button text-blue-600 text-sm font-semibold items-center space-x-2 hover:bg-gray-200 rounded-md p-2 hidden md:flex"
+                            class="tab-button text-blue-600 text-sm font-semibold flex items-center space-x-2 hover:bg-gray-200"
                             data-tab="account">
                             <i class="fas fa-user-circle text-blue-600"></i>
-                            <span>Account</span>
                         </button>
-
-                        <!-- Icons for smaller screens -->
-                        <div class="flex md:hidden space-x-2">
-                            <button
-                                class="tab-button text-blue-600 text-sm font-semibold flex items-center space-x-2 hover:bg-gray-200"
-                                data-tab="templates">
-                                <i class="fas fa-th text-blue-600"></i>
-                            </button>
-                            <button
-                                class="tab-button text-blue-600 text-sm font-semibold flex items-center space-x-2 hover:bg-gray-200"
-                                data-tab="worksheets">
-                                <i class="fas fa-file-alt text-blue-600"></i>
-                            </button>
-                            <button
-                                class="tab-button text-blue-600 text-sm font-semibold flex items-center space-x-2 hover:bg-gray-200"
-                                data-tab="ai-generation">
-                                <i class="fas fa-robot text-blue-600"></i>
-                            </button>
-                            <button
-                                class="tab-button text-blue-600 text-sm font-semibold flex items-center space-x-2 hover:bg-gray-200"
-                                data-tab="account">
-                                <i class="fas fa-user-circle text-blue-600"></i>
-                            </button>
-                        </div>
                     </div>
+                </div>
 
-                    <div>
-                        <!-- Google Login / User Avatar -->
-                        <div id="google-login" class="flex items-center gap-2 cursor-pointer">
-                            <?php if ($is_logged_in): ?>
-                                <!-- Show user avatar when logged in -->
-                                <div class="flex items-center gap-2 bg-gray-100 px-3 py-1 rounded-lg shadow-sm">
-                                    <img src="<?php echo get_avatar_url($current_user->ID); ?>" alt="Profile"
-                                        class="w-10 h-10 rounded-full shadow-md"> <span class="text-gray-700 font-medium text-sm">
-                                        <?php echo esc_html($current_user->display_name); ?>
-                                    </span>
-                                </div>
-                                <a href="<?php echo wp_logout_url(home_url()); ?>"
-                                    class="bg-red-500 text-white text-sm font-medium px-3 py-1 rounded-md hover:bg-red-600 transition">
-                                    Logout
-                                </a>
-                            <?php else: ?>
-                                <!-- Show Google login button when logged out -->
-                                <a href="http://localhost/mywordpress/wp-login.php?loginSocial=google" data-plugin="nsl"
-                                    data-action="connect" data-redirect="current" data-provider="google" data-popupwidth="600"
-                                    data-popupheight="600">
-                                    <i class="fa-solid fa-circle-user text-blue-500"></i>
-                                </a>
-                            <?php endif; ?>
-                            <!-- Close Button -->
-                            <i id="close-ai-overlay"
-                                class="fa-solid fa-circle-xmark text-md font-semibold rounded-full p-1 text-blue-500">
-                            </i>
-
-
-                        </div>
-
+                <div>
+                    <!-- Google Login / User Avatar -->
+                    <div id="google-login" class="flex items-center gap-2 cursor-pointer">
+                        <?php if ($is_logged_in): ?>
+                            <!-- Show user avatar when logged in -->
+                            <div class="flex items-center gap-2 bg-gray-100 px-3 py-1 rounded-lg shadow-sm">
+                                <img src="<?php echo get_avatar_url($current_user->ID); ?>" alt="Profile"
+                                    class="w-10 h-10 rounded-full shadow-md"> <span class="text-gray-700 font-medium text-sm">
+                                    <?php echo esc_html($current_user->display_name); ?>
+                                </span>
+                            </div>
+                            <a href="<?php echo wp_logout_url(home_url()); ?>"
+                                class="bg-red-500 text-white text-sm font-medium px-3 py-1 rounded-md hover:bg-red-600 transition">
+                                Logout
+                            </a>
+                        <?php else: ?>
+                            <!-- Show Google login button when logged out -->
+                            <a href="http://localhost/mywordpress/wp-login.php?loginSocial=google" data-plugin="nsl"
+                                data-action="connect" data-redirect="current" data-provider="google" data-popupwidth="600"
+                                data-popupheight="600">
+                                <i class="fa-solid fa-circle-user text-blue-500"></i>
+                            </a>
+                        <?php endif; ?>
+                        <!-- Close Button -->
+                        <i id="close-ai-overlay"
+                            class="fa-solid fa-circle-xmark text-md font-semibold rounded-full p-1 text-blue-500">
+                        </i>
 
 
                     </div>
 
 
-                </nav>
+
+                </div>
+
+
+            </nav>
+            <div class="bg-white w-full p-4 rounded-b-lg shadow-lg mx-auto my-auto h-full">
+
 
 
                 <!-- Dynamic Content Area -->
-                <div id="tab-content" class="bg-white p-2 rounded-md h-full overflow-y-auto w-full">
+                <div id="tab-content" class="bg-white p-2 rounded-md h-full overflow-y-auto">
                     <!-- Premade Templates Tab -->
                     <div id="templates" class="tab-content h-full flex flex-col p-4 bg-white rounded-lg shadow-md">
                         <p class="text-sm font-semibold text-blue-700 mb-2">Customize Template</p>
@@ -942,7 +1071,7 @@ class AI_Worksheet_Generator
 
 
                     <!-- AI Generation Tab -->
-                    <div id="ai-generation" class="tab-content hidden overflow-auto h-full">
+                    <div id="ai-generation" class="tab-content hidden overflow-auto">
                         <div
                             class="ai-content flex flex-col md:flex-row gap-4 p-3 bg-gray-100 rounded-md shadow-md h-full md:overflow-y-auto">
 
@@ -961,15 +1090,15 @@ class AI_Worksheet_Generator
                                         <li>Provide **sample HTML** for clarity.</li>
                                     </ul>
                                     <pre class="bg-gray-50 p-2 rounded text-xs border text-gray-700">
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            &lt;div class="worksheet"&gt;
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                &lt;h1 style="color: blue;"&gt;Math Worksheet&lt;/h1&gt;
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                &lt;p&gt;Solve the following problems:&lt;/p&gt;
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                &lt;ul&gt;
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    &lt;li&gt;5 + 3 = ?&lt;/li&gt;
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    &lt;li&gt;10 - 4 = ?&lt;/li&gt;
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                &lt;/ul&gt;
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            &lt;/div&gt;
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        </pre>
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            &lt;div class="worksheet"&gt;
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                &lt;h1 style="color: blue;"&gt;Math Worksheet&lt;/h1&gt;
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                &lt;p&gt;Solve the following problems:&lt;/p&gt;
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                &lt;ul&gt;
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    &lt;li&gt;5 + 3 = ?&lt;/li&gt;
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    &lt;li&gt;10 - 4 = ?&lt;/li&gt;
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                &lt;/ul&gt;
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            &lt;/div&gt;
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        </pre>
                                 </div>
 
                                 <textarea id="awg-prompt"
@@ -1045,6 +1174,45 @@ class AI_Worksheet_Generator
                                 </div>
                             </div>
 
+                            <!-- Cart Section -->
+                            <h3 class="text-sm font-semibold text-gray-700 mt-4 mb-2">Your Cart</h3>
+                            <?php
+                            $cart = is_user_logged_in() ? get_user_meta(get_current_user_id(), 'awg_cart', true) : ($_SESSION['awg_cart'] ?? []);
+                            if (!empty($cart)): ?>
+                                <ul class="space-y-2 text-sm">
+                                    <?php foreach ($cart as $item): ?>
+                                        <li class="flex items-center justify-between bg-gray-100 p-2 rounded-md shadow-sm">
+                                            <span class="text-gray-600 truncate"><?php echo esc_html($item['name']); ?></span>
+                                            <button class="text-red-500 text-xs font-medium hover:underline remove-from-cart"
+                                                data-id="<?php echo esc_attr($item['id']); ?>">Remove</button>
+                                        </li>
+                                    <?php endforeach; ?>
+                                </ul>
+                                <button id="checkout-btn"
+                                    class="bg-green-500 text-white text-sm px-3 py-1.5 rounded-lg mt-3 hover:bg-green-600 transition">
+                                    Checkout
+                                </button>
+                            <?php else: ?>
+                                <p class="text-xs text-gray-500">Your cart is empty.</p>
+                            <?php endif; ?>
+
+                            <!-- Buy Credits Section -->
+                            <h3 class="text-sm font-semibold text-gray-700 mt-4 mb-2">Buy Credits</h3>
+                            <button id="buy-credits-btn"
+                                class="bg-blue-500 text-white text-sm px-3 py-1.5 rounded-lg hover:bg-blue-600 transition">
+                                Buy 10 Credits - $5
+                            </button>
+
+                            <!-- Subscription Section -->
+                            <h3 class="text-sm font-semibold text-gray-700 mt-4 mb-2">Subscription</h3>
+                            <button id="subscribe-btn"
+                                class="bg-purple-500 text-white text-sm px-3 py-1.5 rounded-lg hover:bg-purple-600 transition">
+                                Subscribe for $10/month
+                            </button>
+
+
+
+
                             <!-- PDF List -->
                             <h3 class="text-sm font-semibold text-gray-700 mb-2">Your Generated PDFs</h3>
                             <?php if (!empty($user_pdfs)): ?>
@@ -1097,7 +1265,6 @@ class AI_Worksheet_Generator
 
                 </div>
             </div>
-        </div>
         </div>
 
         <script>
@@ -1281,6 +1448,7 @@ class AI_Worksheet_Generator
                         fetch(selectedTemplate)
                             .then(response => response.text())
                             .then(data => {
+                                console.log(" Template Data: ", data);
                                 templatePreview.innerHTML = data; // Load template into preview
                                 setTimeout(() => enableEditing(), 300); // Enable editing after load
                             })
