@@ -52,58 +52,84 @@ class AI_Worksheet_Generator
 
     public function enqueue_assets()
     {
-        // Enqueue Tailwind CSS from the official CDN
+        // ✅ Tailwind CSS
         wp_enqueue_script('tailwind-config', 'https://cdn.tailwindcss.com', array(), null, false);
-        wp_enqueue_script('awg-scripts', plugin_dir_url(file: __FILE__) . 'js/scripts.js', array('jquery'), null, true);
+        wp_add_inline_script('tailwind-config', 'tailwind.config = { theme: { extend: {} } }');
 
-        // Add inline script to configure Tailwind before it's used
-        wp_add_inline_script('tailwind-config', 'tailwind.config = { theme: { extend: {} } }', 'before');
-
-        //Font awesome cdn
+        // ✅ Font Awesome
         wp_enqueue_style('font-awesome', 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css', array(), null, false);
 
+        // ✅ PDF.js (Core Library Only)
+        wp_enqueue_script('pdfjs-lib', 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js', array(), null, true);
+
+        // ✅ Plugin styles
         wp_enqueue_style('awg-styles', plugin_dir_url(__FILE__) . 'css/styles.css');
 
+        // ✅ Plugin Scripts
+        wp_enqueue_script('awg-scripts', plugin_dir_url(__FILE__) . 'js/awg-scripts.js', array('jquery', 'pdfjs-lib'), null, true);
+
+        // ✅ Localize AJAX
+        wp_localize_script('awg-scripts', 'awg_ajax', [
+            'ajax_url' => admin_url('admin-ajax.php')
+        ]);
     }
+
+
+
 
     public function __construct()
     {
-        add_action('admin_enqueue_scripts', array($this, 'enqueue_assets'));
-        add_action('wp_enqueue_scripts', array($this, 'enqueue_assets')); // If using front-end
-        add_action('admin_menu', array($this, 'add_admin_menu'));
-        add_action('admin_init', array($this, 'register_settings'));
-        add_action('wp_ajax_generate_ai_response', array($this, 'generate_ai_response'));
-        add_action('wp_ajax_fetch_latest_pdf', array($this, 'fetch_latest_pdf'));
-        add_action('wp_ajax_nopriv_generate_ai_response', array($this, 'generate_ai_response'));
-        add_action('admin_init', array($this, 'handle_template_upload'));
+        // Enqueue Scripts & Styles
+        add_action('admin_enqueue_scripts', [$this, 'enqueue_assets']);
+        add_action('wp_enqueue_scripts', [$this, 'enqueue_assets']); // If using front-end
+
+        // Admin Menu & Settings
+        add_action('admin_menu', [$this, 'add_admin_menu']);
+        add_action('admin_init', [$this, 'admin_init_actions']); // Combined multiple `admin_init` calls
+
+        // AJAX Actions (Authenticated Users)
+        add_action('wp_ajax_generate_ai_response', [$this, 'generate_ai_response']);
+        add_action('wp_ajax_fetch_latest_pdf', [$this, 'fetch_latest_pdf']);
         add_action('wp_ajax_fetch_generated_html', [$this, 'fetch_generated_html']);
         add_action('wp_ajax_convert_to_pdf', [$this, 'convert_to_pdf']);
+        add_action('wp_ajax_save_custom_template', [$this, 'save_custom_template']);
 
-        add_action('wp_ajax_nopriv_convert_to_pdf', [$this, 'convert_html_to_pdf']); // For non-logged-in users
+        // AJAX Actions (Non-Authenticated Users)
+        add_action('wp_ajax_nopriv_generate_ai_response', [$this, 'generate_ai_response']);
+        add_action('wp_ajax_nopriv_fetch_generated_html', [$this, 'fetch_generated_html']);
+        add_action('wp_ajax_nopriv_convert_to_pdf', [$this, 'convert_to_pdf']); // Fixed wrong function name
 
-        add_action('wp_ajax_save_custom_template', function () {
-            if (isset($_POST['html'])) {
-                $customHtml = stripslashes($_POST['html']);
-                $filePath = WP_CONTENT_DIR . '/uploads/custom_template.html';
-                file_put_contents($filePath, $customHtml);
-                echo "Template saved!";
-            }
-            wp_die();
-        });
-
-        add_action('wp_ajax_nopriv_fetch_generated_html', [$this, 'fetch_generated_html']); // Allow non-logged-in users if needed
-
-        //Cart
-        add_action('wp_ajax_awg_add_to_cart', 'awg_add_to_cart');
-        add_action('wp_ajax_nopriv_awg_add_to_cart', 'awg_add_to_cart');
-        add_action('wp_ajax_awg_remove_from_cart', 'awg_remove_from_cart');
-        add_action('wp_ajax_nopriv_awg_remove_from_cart', 'awg_remove_from_cart');
-        add_action('wp_ajax_awg_checkout', 'awg_checkout');
+        // Cart & Checkout AJAX
+        add_action('wp_ajax_awg_add_to_cart', [$this, 'awg_add_to_cart']);
+        add_action('wp_ajax_nopriv_awg_add_to_cart', [$this, 'awg_add_to_cart']);
+        add_action('wp_ajax_awg_remove_from_cart', [$this, 'awg_remove_from_cart']);
+        add_action('wp_ajax_nopriv_awg_remove_from_cart', [$this, 'awg_remove_from_cart']);
+        add_action('wp_ajax_awg_checkout', [$this, 'awg_checkout']);
 
 
-        //Shortcodes
-        add_shortcode('awg_generate_html', array($this, 'display_html_response'));
-        add_shortcode('awg_view_pdf', array($this, 'view_pdf'));
+
+        //Transfer Correct pdf url
+        // Shortcodes
+        add_shortcode('awg_generate_html', [$this, 'display_html_response']);
+        add_shortcode('awg_view_pdf', [$this, 'view_pdf']);
+
+    }
+
+    public function admin_init_actions()
+    {
+        $this->register_settings();
+        $this->handle_template_upload();
+    }
+
+    public function save_custom_template()
+    {
+        if (isset($_POST['html'])) {
+            $customHtml = stripslashes($_POST['html']);
+            $filePath = WP_CONTENT_DIR . '/uploads/custom_template.html';
+            file_put_contents($filePath, $customHtml);
+            echo "Template saved!";
+        }
+        wp_die();
     }
 
 
@@ -491,7 +517,19 @@ class AI_Worksheet_Generator
             wp_send_json_error(['message' => 'API key is not set']);
         }
 
-        $prompt = sanitize_text_field($_POST['prompt']);
+        $user_prompt = sanitize_text_field($_POST['prompt']);
+
+        // 🔹 Injected Guideline for AI to ensure worksheet generation
+        $ai_guideline = "Generate a well-structured worksheet in HTML format with the following details and styles:
+        - Use semantic HTML elements (e.g., <header>, <section>, <table>).
+        - Include a clear heading for the worksheet title.
+        - Use <table> elements for structured questions (if needed).
+        - Ensure proper spacing and alignment for readability.
+        - Avoid including external scripts, only use pure HTML and inline CSS.
+        - Keep it clean and minimalistic.";
+
+        // Combine guideline with user prompt
+        $prompt = $ai_guideline . "\n\nUser Input: " . $user_prompt;
 
         $response = wp_remote_post('https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=' . $api_key, array(
             'body' => json_encode(array(
@@ -529,6 +567,7 @@ class AI_Worksheet_Generator
 
         wp_send_json_success(['html' => $updated_html, 'pdf_url' => $pdf_url]);
     }
+
 
     /**
      * Extracts inline CSS from style attributes and moves them into a <style> block.
@@ -586,8 +625,38 @@ class AI_Worksheet_Generator
             return '';
         }
 
-        return wp_get_attachment_url($attachment_id);
+        // Get the URL of the PDF file
+        $pdf_url = wp_get_attachment_url($attachment_id);
+
+        // Add the generated PDF to the cart
+        $this->awg_add_to_cart_after_pdf($pdf_url, $username);
+
+        return $pdf_url;
     }
+
+    private function awg_add_to_cart_after_pdf($pdf_url, $username)
+    {
+        // Create the worksheet item to add to the cart
+        $worksheet = [
+            'id' => sanitize_text_field($username . '-' . time()), // You can create a unique ID for the PDF
+            'name' => 'Generated Worksheet', // You can change this name as needed
+            'price' => 10, // Set a default price or dynamically calculate it
+            'url' => esc_url($pdf_url)
+        ];
+
+        // Add to cart based on user login status
+        if (is_user_logged_in()) {
+            $user_id = get_current_user_id();
+            $cart = get_user_meta($user_id, 'awg_cart', true) ?: [];
+            $cart[] = $worksheet;
+            update_user_meta($user_id, 'awg_cart', $cart);
+        } else {
+            // Add to session if the user is not logged in
+            session_start();
+            $_SESSION['awg_cart'][] = $worksheet;
+        }
+    }
+
 
     function convert_html_to_pdf()
     {
@@ -749,7 +818,8 @@ class AI_Worksheet_Generator
         wp_send_json_success(['message' => 'Worksheet added to cart']);
     }
 
-    function awg_remove_from_cart()
+    // Remove item from cart
+    public function awg_remove_from_cart()
     {
         session_start();
 
@@ -758,62 +828,25 @@ class AI_Worksheet_Generator
         if (is_user_logged_in()) {
             $user_id = get_current_user_id();
             $cart = get_user_meta($user_id, 'awg_cart', true) ?: [];
+
+            // Filter out the item by ID
             $cart = array_filter($cart, function ($item) use ($worksheet_id) {
                 return $item['id'] !== $worksheet_id;
             });
+
             update_user_meta($user_id, 'awg_cart', array_values($cart));
         } else {
-            $_SESSION['awg_cart'] = array_filter($_SESSION['awg_cart'], function ($item) use ($worksheet_id) {
-                return $item['id'] !== $worksheet_id;
-            });
+            if (!empty($_SESSION['awg_cart'])) {
+                $_SESSION['awg_cart'] = array_values(array_filter($_SESSION['awg_cart'], function ($item) use ($worksheet_id) {
+                    return $item['id'] !== $worksheet_id;
+                }));
+            }
         }
 
         wp_send_json_success(['message' => 'Worksheet removed from cart']);
     }
 
-    function awg_check_subscription()
-    {
-        $user_id = get_current_user_id();
-        $subscribed = get_user_meta($user_id, 'awg_subscription', true);
-        return !empty($subscribed);
-    }
 
-    function awg_deduct_credit($user_id, $amount)
-    {
-        $credits = get_user_meta($user_id, 'awg_credits', true) ?: 0;
-        if ($credits >= $amount) {
-            update_user_meta($user_id, 'awg_credits', $credits - $amount);
-            return true;
-        }
-        return false;
-    }
-
-    function awg_checkout()
-    {
-        if (!is_user_logged_in()) {
-            wp_send_json_error(['message' => 'You must be logged in.']);
-        }
-
-        $user_id = get_current_user_id();
-        $cart = get_user_meta($user_id, 'awg_cart', true);
-        $credit_cost = count($cart);
-
-        if ($this->awg_check_subscription()) {
-            update_user_meta($user_id, 'awg_cart', []);
-            wp_send_json_success(['message' => 'Checkout successful!']);
-        } elseif ($this->awg_deduct_credit($user_id, $credit_cost)) {
-            update_user_meta($user_id, 'awg_cart', []);
-            wp_send_json_success(['message' => 'Checkout successful!']);
-        } else {
-            wp_send_json_error(['message' => 'Insufficient credits.']);
-        }
-
-        if (!is_user_logged_in() && !$this->awg_can_guest_download()) {
-            wp_send_json_error(['message' => 'You have used your free download.']);
-        }
-        $this->awg_track_guest_download();
-
-    }
 
 
     // Track Guest Downloads
@@ -830,10 +863,6 @@ class AI_Worksheet_Generator
         session_start();
         return ($_SESSION['awg_free_downloads'] ?? 0) < 1;
     }
-
-
-
-
 
 
 
@@ -984,9 +1013,9 @@ class AI_Worksheet_Generator
 
 
                 <!-- Dynamic Content Area -->
-                <div id="tab-content" class="bg-white p-2 rounded-md h-full overflow-y-auto">
+                <div class="bg-white p-2 rounded-md h-full overflow-y-auto">
                     <!-- Premade Templates Tab -->
-                    <div id="templates" class="tab-content h-full flex flex-col p-4 bg-white rounded-lg shadow-md">
+                    <div id="templates" class="tab-content min-h-full mb-10 flex flex-col p-4 bg-white rounded-lg shadow-md">
                         <p class="text-sm font-semibold text-blue-700 mb-2">Customize Template</p>
 
                         <div class="flex flex-col md:flex-row gap-4 flex-grow">
@@ -1050,7 +1079,7 @@ class AI_Worksheet_Generator
 
                     <!-- Premade Worksheets Tab -->
                     <div id="worksheets" class="tab-content hidden p-4 bg-white rounded-lg shadow-md">
-                        <div class="flex flex-col md:flex-row gap-3">
+                        <div class="flex flex-col min-h-full md:flex-row gap-3">
                             <!-- Grid of Templates -->
                             <div id="template-grid"
                                 class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 w-full md:w-2/3">
@@ -1073,7 +1102,7 @@ class AI_Worksheet_Generator
                     <!-- AI Generation Tab -->
                     <div id="ai-generation" class="tab-content hidden overflow-auto">
                         <div
-                            class="ai-content flex flex-col md:flex-row gap-4 p-3 bg-gray-100 rounded-md shadow-md h-full md:overflow-y-auto">
+                            class="ai-content flex flex-col md:flex-row gap-4 p-3 bg-gray-100 rounded-md shadow-md min-h-full mb-10 ">
 
                             <!-- AI Input Section -->
                             <div class="ai-input-section w-full md:w-1/2 bg-white p-3 rounded-md shadow-sm flex flex-col">
@@ -1089,21 +1118,22 @@ class AI_Worksheet_Generator
                                         <li>Define **colors**: Background, text, table borders.</li>
                                         <li>Provide **sample HTML** for clarity.</li>
                                     </ul>
-                                    <pre class="bg-gray-50 p-2 rounded text-xs border text-gray-700">
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            &lt;div class="worksheet"&gt;
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                &lt;h1 style="color: blue;"&gt;Math Worksheet&lt;/h1&gt;
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                &lt;p&gt;Solve the following problems:&lt;/p&gt;
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                &lt;ul&gt;
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    &lt;li&gt;5 + 3 = ?&lt;/li&gt;
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    &lt;li&gt;10 - 4 = ?&lt;/li&gt;
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                &lt;/ul&gt;
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            &lt;/div&gt;
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        </pre>
+                                    </pre>
                                 </div>
 
                                 <textarea id="awg-prompt"
-                                    class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 resize-none min-h-[110px] flex-1 text-sm"
-                                    placeholder="Example: Define colors, sections, and layout in HTML..."></textarea>
+                                    class="w-full p-2 border-2 border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 resize-none min-h-[110px] flex-1 text-sm text-gray-500"
+                                    onfocus="if (this.value === this.defaultValue) this.value = '';">
+                        Exmaple: Create a mathematics worksheet for primary school students. The worksheet should have:
+                        - A title: "Basic Math Practice"
+                        - A subtitle: "Addition and Subtraction (Ages 6-8)"
+                        - A section with simple **addition problems** (e.g., 5 + 3 = __)
+                        - A section with simple **subtraction problems** (e.g., 9 - 4 = __)
+                        - A space for the student's name and date at the top
+                        - A footer with "Good luck!" centered at the bottom
+                        - A simple, readable font with a clear layout using a <table> for questions
+                        </textarea>
+
                                 <button id="awg-generate-btn"
                                     class="w-full mt-2 bg-blue-500 text-white py-2 px-3 rounded-md hover:bg-blue-600 transition text-sm">
                                     Generate Worksheet
@@ -1188,45 +1218,9 @@ class AI_Worksheet_Generator
                                         </li>
                                     <?php endforeach; ?>
                                 </ul>
-                                <button id="checkout-btn"
-                                    class="bg-green-500 text-white text-sm px-3 py-1.5 rounded-lg mt-3 hover:bg-green-600 transition">
-                                    Checkout
                                 </button>
                             <?php else: ?>
                                 <p class="text-xs text-gray-500">Your cart is empty.</p>
-                            <?php endif; ?>
-
-                            <!-- Buy Credits Section -->
-                            <h3 class="text-sm font-semibold text-gray-700 mt-4 mb-2">Buy Credits</h3>
-                            <button id="buy-credits-btn"
-                                class="bg-blue-500 text-white text-sm px-3 py-1.5 rounded-lg hover:bg-blue-600 transition">
-                                Buy 10 Credits - $5
-                            </button>
-
-                            <!-- Subscription Section -->
-                            <h3 class="text-sm font-semibold text-gray-700 mt-4 mb-2">Subscription</h3>
-                            <button id="subscribe-btn"
-                                class="bg-purple-500 text-white text-sm px-3 py-1.5 rounded-lg hover:bg-purple-600 transition">
-                                Subscribe for $10/month
-                            </button>
-
-
-
-
-                            <!-- PDF List -->
-                            <h3 class="text-sm font-semibold text-gray-700 mb-2">Your Generated PDFs</h3>
-                            <?php if (!empty($user_pdfs)): ?>
-                                <ul class="space-y-2 text-sm">
-                                    <?php foreach ($user_pdfs as $pdf): ?>
-                                        <li class="flex items-center gap-2 bg-gray-100 p-2 rounded-md shadow-sm">
-                                            <span class="text-gray-600 truncate"><?php echo esc_html($pdf['title']); ?></span>
-                                            <a href="<?php echo esc_url($pdf['url']); ?>" target="_blank"
-                                                class="text-blue-500 text-xs font-medium hover:underline">View</a>
-                                        </li>
-                                    <?php endforeach; ?>
-                                </ul>
-                            <?php else: ?>
-                                <p class="text-xs text-gray-500">You have not generated any PDFs yet.</p>
                             <?php endif; ?>
 
                             <!-- Upgrade Button -->
@@ -1235,426 +1229,543 @@ class AI_Worksheet_Generator
                                 Upgrade Account
                             </button>
 
-                        <?php else: ?>
-                            <!-- Not Logged-in Section -->
-                            <div class="text-center">
-                                <p class="text-sm text-gray-600 mb-2">Login is free and allows you to store and manage your
-                                    generated PDFs.</p>
-
-
-                                <div class="w-full border-b mt-4 mb-4 flex flex-col items-center">
-                                    <!-- Show Google login button when logged out -->
-                                    <a href="http://localhost/mywordpress/wp-login.php?loginSocial=google" data-plugin="nsl"
-                                        data-action="connect" data-redirect="current" data-provider="google" data-popupwidth="600"
-                                        data-popupheight="600">
-                                        <i class="fa-solid fa-circle-user text-4xl text-blue-500"></i>
-                                    </a>
-
-                                    <p class="text-sm text-gray-500 mt-2">Don't have a Google account?</p>
+                            <div class="flex flex-wrap md:flex-nowrap justify-between items-start gap-4 mt-3">
+                                <!-- PDF List -->
+                                <div class="w-full md:w-1/3">
+                                    <h3 class="text-sm font-semibold text-gray-700 mb-2">Your Generated PDFs</h3>
+                                    <?php if (!empty($user_pdfs)): ?>
+                                        <ul class="space-y-2 text-sm">
+                                            <?php foreach ($user_pdfs as $pdf): ?>
+                                                <li class="flex items-center justify-between bg-gray-100 p-2 rounded-md shadow-sm">
+                                                    <span class="text-gray-600 truncate"><?php echo esc_html($pdf['title']); ?></span>
+                                                    <button class="text-blue-500 text-xs font-medium hover:underline view-pdf"
+                                                        data-url="<?php echo esc_url($pdf['url']); ?>">
+                                                        View
+                                                    </button>
+                                                </li>
+                                            <?php endforeach; ?>
+                                        </ul>
+                                    <?php else: ?>
+                                        <p class="text-xs text-gray-500">You have not generated any PDFs yet.</p>
+                                    <?php endif; ?>
                                 </div>
 
-                            <?php endif; ?>
+                                <!-- PDF Display Area -->
+                                <div class="w-full md:w-2/3 bg-white p-4 shadow-md rounded-md">
+                                    <h3 class="text-sm font-semibold text-gray-700 mb-2">PDF Viewer</h3>
+                                    <div id="pdf-viewer-container"
+                                        class="w-full h-[600px] overflow-auto border rounded-md flex flex-col items-center justify-start p-2">
+                                        <p class="text-xs text-gray-500 text-center">Click "View" to display a PDF here.</p>
+                                    </div>
+                                </div>
+
+
+
+
+
+
+                            <?php else: ?>
+                                <!-- Not Logged-in Section -->
+                                <div class="text-center">
+                                    <p class="text-sm text-gray-600 mb-2">Login is free and allows you to store and manage your
+                                        generated PDFs.</p>
+
+
+                                    <div class="w-full border-b mt-4 mb-4 flex flex-col items-center">
+                                        <!-- Show Google login button when logged out -->
+                                        <a href="http://localhost/mywordpress/wp-login.php?loginSocial=google" data-plugin="nsl"
+                                            data-action="connect" data-redirect="current" data-provider="google"
+                                            data-popupwidth="600" data-popupheight="600">
+                                            <i class="fa-solid fa-circle-user text-4xl text-blue-500"></i>
+                                        </a>
+
+                                        <p class="text-sm text-gray-500 mt-2">Don't have a Google account?</p>
+                                    </div>
+
+                                <?php endif; ?>
+
+                            </div>
+
+
 
                         </div>
 
 
 
                     </div>
-
-
-
                 </div>
             </div>
-        </div>
 
-        <script>
-            document.addEventListener("DOMContentLoaded", function () {
-                const overlay = document.getElementById("ai-overlay");
-                const body = document.body;
+            <script>
+                document.addEventListener("DOMContentLoaded", function () {
+                    const overlay = document.getElementById("ai-overlay");
+                    const body = document.body;
 
-                // Open AI Overlay
-                document.getElementById("create-with-ai-btn").addEventListener("click", function () {
-                    overlay.style.display = "flex";
-                    body.classList.add("no-scroll");
-                });
-
-                // Close AI Overlay
-                document.getElementById("close-ai-overlay")?.addEventListener("click", function () {
-                    overlay.style.display = "none";
-                    body.classList.remove("no-scroll");
-                });
-
-                // Handle tab navigation
-                document.querySelectorAll('.tab-button').forEach(button => {
-                    button.addEventListener('click', () => {
-                        document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('bg-gray-300', 'text-gray-900'));
-                        button.classList.add('bg-gray-300', 'text-gray-900');
-
-                        document.querySelectorAll('.tab-content').forEach(content => content.classList.add('hidden'));
-                        document.getElementById(button.getAttribute('data-tab')).classList.remove('hidden');
+                    // Open AI Overlay
+                    document.getElementById("create-with-ai-btn").addEventListener("click", function () {
+                        overlay.style.display = "flex";
+                        body.classList.add("no-scroll");
                     });
-                });
 
-                // Default open first tab
-                document.querySelector('.tab-button').click();
-
-                // Template Selection Logic
-                function setupTemplateSelection() {
-                    document.getElementById('template-grid').addEventListener('click', (event) => {
-                        const card = event.target.closest('.template-card');
-                        if (!card) return;
-
-                        const templateName = card.getAttribute('data-template');
-                        const imageSrc = card.querySelector('img').src;
-
-                        document.getElementById('template-preview').src = imageSrc;
-                        document.getElementById('template-name').innerText = templateName.replace('template-', 'Template ').replace('premadeworksheet-', 'Worksheet ');
+                    // Close AI Overlay
+                    document.getElementById("close-ai-overlay")?.addEventListener("click", function () {
+                        overlay.style.display = "none";
+                        body.classList.remove("no-scroll");
                     });
-                }
 
-                function loadTemplates() {
-                    const templates = <?php echo json_encode(get_option('awg_templates', [])); ?>;
-                    const templateGrid = document.getElementById('template-grid');
-                    templateGrid.innerHTML = '';
+                    // Handle tab navigation
+                    document.querySelectorAll('.tab-button').forEach(button => {
+                        button.addEventListener('click', () => {
+                            document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('bg-gray-300', 'text-gray-900'));
+                            button.classList.add('bg-gray-300', 'text-gray-900');
 
-                    if (templates.length === 0) {
-                        templateGrid.innerHTML = "<p class='text-gray-500 text-center col-span-3'>No templates available.</p>";
-                        return;
+                            document.querySelectorAll('.tab-content').forEach(content => content.classList.add('hidden'));
+                            document.getElementById(button.getAttribute('data-tab')).classList.remove('hidden');
+                        });
+                    });
+
+                    // Default open first tab
+                    document.querySelector('.tab-button').click();
+
+                    // Template Selection Logic
+                    function setupTemplateSelection() {
+                        document.getElementById('template-grid').addEventListener('click', (event) => {
+                            const card = event.target.closest('.template-card');
+                            if (!card) return;
+
+                            const templateName = card.getAttribute('data-template');
+                            const imageSrc = card.querySelector('img').src;
+
+                            document.getElementById('template-preview').src = imageSrc;
+                            document.getElementById('template-name').innerText = templateName.replace('template-', 'Template ').replace('premadeworksheet-', 'Worksheet ');
+                        });
                     }
 
-                    templates.forEach(template => {
-                        const card = document.createElement('div');
-                        card.className = "template-card bg-white p-2 rounded-md shadow-sm hover:shadow-md transition-all cursor-pointer border border-gray-200 hover:border-blue-500";
+                    function loadTemplates() {
+                        const templates = <?php echo json_encode(get_option('awg_templates', [])); ?>;
+                        const templateGrid = document.getElementById('template-grid');
+                        templateGrid.innerHTML = '';
 
-                        card.setAttribute('data-template', template.name);
+                        if (templates.length === 0) {
+                            templateGrid.innerHTML = "<p class='text-gray-500 text-center col-span-3'>No templates available.</p>";
+                            return;
+                        }
 
-                        card.innerHTML = `
-                            <img src="${template.image}" alt="${template.name}" class="w-full h-28 object-cover rounded-md border border-gray-300">
-                            <p class="text-center mt-2 text-sm font-semibold text-gray-700">${template.name.replace('template-', 'Template ').replace('premadeworksheet-', 'Worksheet ')}</p>
-                        `;
+                        templates.forEach(template => {
+                            const card = document.createElement('div');
+                            card.className = "template-card h-fit bg-white p-3 rounded-lg shadow-md hover:shadow-lg transition border border-gray-200 hover:border-blue-500 flex flex-col items-center text-center";
 
-                        templateGrid.appendChild(card);
+                            card.setAttribute('data-template', template.name);
+
+                            card.innerHTML = `
+            <!-- Template Image -->
+                <img src="${template.image}" alt="${template.name}" class="w-full h-32 object-cover rounded-md border border-gray-300">
+
+                <!-- Template Name -->
+                <p class="mt-3 text-sm font-semibold text-gray-700">${template.name.replace('template-', 'Template ').replace('premadeworksheet-', 'Worksheet ')}</p>
+
+                <!-- Action Buttons -->
+                <div class="flex justify-center gap-3 mt-3 w-full">
+                    <!-- View Button -->
+                    <button class="bg-blue-500 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-blue-600 transition">
+                        <i class="fas fa-eye"></i> View
+                    </button>
+
+                    <!-- Send to Cart Button -->
+                    <button class="bg-green-500 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-green-600 transition send-to-cart"
+                            data-id="${template.id}"
+                            data-name="${template.name}"
+                            data-image="${template.image}">
+                        <i class="fas fa-cart-plus"></i> Add
+                    </button>
+                </div>
+            
+        `;
+
+                            templateGrid.appendChild(card);
+                        });
+
+                        document.addEventListener("DOMContentLoaded", function () {
+                            document.querySelectorAll('.send-to-cart').forEach(button => {
+                                button.addEventListener('click', function () {
+                                    const worksheetData = {
+                                        action: 'awg_add_to_cart',
+                                        worksheet_id: this.getAttribute('data-id'),
+                                        worksheet_name: this.getAttribute('data-name'),
+                                        worksheet_price: this.getAttribute('data-price'),
+                                        worksheet_url: this.getAttribute('data-url')
+                                    };
+
+                                    // Send AJAX request to add item to cart
+                                    fetch(awg_ajax.ajax_url, {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                                        body: new URLSearchParams(worksheetData)
+                                    })
+                                        .then(response => response.json())
+                                        .then(data => {
+                                            if (data.success) {
+                                                // Create a temporary success message
+                                                const message = document.createElement("p");
+                                                message.textContent = "Added to cart!";
+                                                message.className = "text-green-500 text-xs font-semibold mt-1 fade-out";
+
+                                                // Insert message after button
+                                                this.parentElement.appendChild(message);
+
+                                                // Remove message after delay
+                                                setTimeout(() => {
+                                                    message.remove();
+                                                }, 1000);
+
+                                                // Optionally, update cart UI dynamically here (if needed) TODO Later..
+                                            }
+                                        })
+                                        .catch(error => console.error('Error:', error));
+                                });
+                            });
+                        });
+
+                    }
+
+                    //Remove from cart
+                    document.querySelectorAll('.remove-from-cart').forEach(button => {
+                        button.addEventListener("click", function () {
+                            const worksheetId = this.getAttribute("data-id");
+                            const listItem = this.closest("li"); // Get the <li> element
+
+                            // Send AJAX request to remove item
+                            fetch(awg_ajax.ajax_url, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                                body: new URLSearchParams({
+                                    action: 'awg_remove_from_cart',
+                                    worksheet_id: worksheetId
+                                })
+                            })
+                                .then(response => response.json())
+                                .then(data => {
+                                    if (data.success) {
+                                        // Show confirmation message
+                                        const message = document.createElement("p");
+                                        message.textContent = "Removed from cart";
+                                        message.className = "text-red-500 text-xs font-semibold mt-1 fade-out";
+                                        listItem.appendChild(message);
+
+                                        // Remove item after a delay
+                                        setTimeout(() => {
+                                            listItem.remove(); // Remove item from UI
+                                        }, 1000); // Wait 1s before removing
+                                    }
+                                })
+                                .catch(error => console.error("Error:", error));
+                        });
                     });
 
-                }
 
-                // Initialize functions
-                loadTemplates();
-                setupTemplateSelection();
 
-                //AI Overlay Tab
-                document.getElementById("awg-generate-btn").addEventListener("click", function () {
-                    let userPrompt = document.getElementById("awg-prompt").value;
-                    if (!userPrompt) return;
+                    // Initialize functions
+                    loadTemplates();
+                    setupTemplateSelection();
 
-                    document.getElementById("awg-loading").style.display = "block";
-                    document.getElementById("awg-html-output").style.display = "none";
-                    document.getElementById("awg-pdf-container").style.display = "none";
+                    //AI Overlay Tab
+                    document.getElementById("awg-generate-btn").addEventListener("click", function () {
+                        let userPrompt = document.getElementById("awg-prompt").value;
+                        if (!userPrompt) return;
 
-                    fetch("<?php echo admin_url('admin-ajax.php'); ?>", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-                        body: "action=generate_ai_response&prompt=" + encodeURIComponent(userPrompt)
-                    })
+                        document.getElementById("awg-loading").style.display = "block";
+                        document.getElementById("awg-html-output").style.display = "none";
+                        document.getElementById("awg-pdf-container").style.display = "none";
+
+                        fetch("<?php echo admin_url('admin-ajax.php'); ?>", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                            body: "action=generate_ai_response&prompt=" + encodeURIComponent(userPrompt)
+                        })
+                            .then(response => response.json())
+                            .then(jsonData => {
+                                document.getElementById("awg-loading").style.display = "none";
+
+                                if (jsonData.success) {
+                                    // console.log("JSON data: ", jsonData);
+                                    document.getElementById("awg-html-output").innerHTML = jsonData.data.html;
+                                    // console.log("html: ", jsonData.html);
+                                    document.getElementById("awg-html-output").style.display = "block";
+
+                                    let checkPdfInterval = setInterval(() => {
+                                        fetch("<?php echo admin_url('admin-ajax.php'); ?>?action=fetch_latest_pdf")
+                                            .then(response => response.json())
+                                            .then(pdfData => {
+                                                if (pdfData.success) {
+                                                    clearInterval(checkPdfInterval);
+                                                    document.getElementById("awg-pdf-frame").src = pdfData.pdf_url;
+                                                    document.getElementById("awg-download-pdf").href = pdfData.pdf_url;
+                                                    document.getElementById("awg-pdf-container").style.display = "block";
+                                                }
+                                            });
+                                    }, 3000);
+                                } else {
+                                    alert("Error: " + jsonData.message);
+                                }
+                            })
+                            .catch(error => {
+                                document.getElementById("awg-loading").style.display = "none";
+                                console.error("Fetch Error:", error);
+                                alert("An unexpected error occurred.");
+                            });
+                    });
+
+                    fetch("<?php echo admin_url('admin-ajax.php'); ?>?action=check_payment_status")
                         .then(response => response.json())
                         .then(jsonData => {
-                            document.getElementById("awg-loading").style.display = "none";
-
-                            if (jsonData.success) {
-                                console.log("JSON data: ", jsonData);
-                                document.getElementById("awg-html-output").innerHTML = jsonData.data.html;
-                                console.log("html: ", jsonData.html);
-                                document.getElementById("awg-html-output").style.display = "block";
-
-                                let checkPdfInterval = setInterval(() => {
-                                    fetch("<?php echo admin_url('admin-ajax.php'); ?>?action=fetch_latest_pdf")
-                                        .then(response => response.json())
-                                        .then(pdfData => {
-                                            if (pdfData.success) {
-                                                clearInterval(checkPdfInterval);
-                                                document.getElementById("awg-pdf-frame").src = pdfData.pdf_url;
-                                                document.getElementById("awg-download-pdf").href = pdfData.pdf_url;
-                                                document.getElementById("awg-pdf-container").style.display = "block";
-                                            }
-                                        });
-                                }, 3000);
-                            } else {
-                                alert("Error: " + jsonData.message);
+                            if (jsonData.success && jsonData.paid) {
+                                document.getElementById("awg-action-strip").classList.remove("hidden");
                             }
                         })
-                        .catch(error => {
-                            document.getElementById("awg-loading").style.display = "none";
-                            console.error("Fetch Error:", error);
-                            alert("An unexpected error occurred.");
-                        });
+                        .catch(error => console.error("Error checking payment status:", error));
+
+
+
+
                 });
 
-                fetch("<?php echo admin_url('admin-ajax.php'); ?>?action=check_payment_status")
-                    .then(response => response.json())
-                    .then(jsonData => {
-                        if (jsonData.success && jsonData.paid) {
-                            document.getElementById("awg-action-strip").classList.remove("hidden");
-                        }
-                    })
-                    .catch(error => console.error("Error checking payment status:", error));
+            </script>
 
+            <script>
+                document.addEventListener("DOMContentLoaded", function () {
+                    const body = document.body;
 
+                    // Template Selection
+                    const templateSelect = document.getElementById("template_select");
+                    const loadButton = document.getElementById("load_template");
+                    const templatePreview = document.getElementById("template_preview");
+                    const saveButton = document.getElementById("save_template");
 
+                    // Sidebar Editing Elements
+                    const editorSidebar = document.getElementById("editorSidebar");
+                    const elementEditor = document.getElementById("elementEditor");
+                    const colorPicker = document.getElementById("colorPicker");
+                    const applyChangesButton = document.getElementById("applyChanges");
 
-            });
+                    let selectedElement = null; // Stores clicked element
 
-        </script>
+                    // 🎯 Load Template into Preview
+                    loadButton.addEventListener("click", function () {
+                        const selectedTemplate = templateSelect.value;
 
-        <script>
-            document.addEventListener("DOMContentLoaded", function () {
-                const body = document.body;
-
-                // Template Overlay Elements
-                // const templateOverlay = document.getElementById("template-overlay");
-                // const openBtn = document.getElementById("select-template-btn");
-                // const closeBtn = document.getElementById("close-overlay");
-
-                // Template Selection
-                const templateSelect = document.getElementById("template_select");
-                const loadButton = document.getElementById("load_template");
-                const templatePreview = document.getElementById("template_preview");
-                const saveButton = document.getElementById("save_template");
-
-                // Sidebar Editing Elements
-                const editorSidebar = document.getElementById("editorSidebar");
-                const elementEditor = document.getElementById("elementEditor");
-                const colorPicker = document.getElementById("colorPicker");
-                const applyChangesButton = document.getElementById("applyChanges");
-
-                let selectedElement = null; // Stores clicked element
-
-                // 🚀 Open Overlay
-                // openBtn.addEventListener("click", () => {
-                //     templateOverlay.classList.remove("hidden");
-                //     body.classList.add("no-scroll");
-                // });
-
-                // // ❌ Close Overlay
-                // closeBtn.addEventListener("click", () => {
-                //     templateOverlay.classList.add("hidden");
-                //     body.classList.remove("no-scroll");
-                // });
-
-                // 🎯 Load Template into Preview
-                loadButton.addEventListener("click", function () {
-                    const selectedTemplate = templateSelect.value;
-
-                    if (selectedTemplate) {
-                        fetch(selectedTemplate)
-                            .then(response => response.text())
-                            .then(data => {
-                                console.log(" Template Data: ", data);
-                                templatePreview.innerHTML = data; // Load template into preview
-                                setTimeout(() => enableEditing(), 300); // Enable editing after load
-                            })
-                            .catch(err => alert('Error loading template: ' + err));
-                    }
-                });
-
-                // ✏️ Enable Editing Functionality
-                function enableEditing() {
-                    // 🖱️ Click to Edit Text
-                    templatePreview.addEventListener("click", function (event) {
-                        selectedElement = event.target;
-
-                        // If it's a text-based element
-                        if (selectedElement.tagName === "P" || selectedElement.tagName === "H1" || selectedElement.tagName === "H2" || selectedElement.tagName === "SPAN") {
-                            elementEditor.value = selectedElement.innerText;
-                            colorPicker.value = getComputedStyle(selectedElement).color; // Get current color
-                            editorSidebar.classList.remove("hidden"); // Show sidebar
+                        if (selectedTemplate) {
+                            fetch(selectedTemplate)
+                                .then(response => response.text())
+                                .then(data => {
+                                    // console.log(" Template Data: ", data);
+                                    templatePreview.innerHTML = data; // Load template into preview
+                                    setTimeout(() => enableEditing(), 300); // Enable editing after load
+                                })
+                                .catch(err => alert('Error loading template: ' + err));
                         }
                     });
-                }
 
-                // ✅ Apply Text & Color Changes
-                applyChangesButton.addEventListener("click", function () {
-                    if (selectedElement) {
-                        selectedElement.innerText = elementEditor.value;
-                        selectedElement.style.color = colorPicker.value;
-                        editorSidebar.classList.add("hidden"); // Hide sidebar after applying
-                    }
-                });
+                    // ✏️ Enable Editing Functionality
+                    function enableEditing() {
+                        // 🖱️ Click to Edit Text
+                        templatePreview.addEventListener("click", function (event) {
+                            selectedElement = event.target;
 
-                // 💾 Save as PDF & Upload to WordPress
-                saveButton.addEventListener("click", function () {
-                    const newHtml = document.getElementById("template_preview").innerHTML;
-
-                    fetch("<?php echo admin_url('admin-ajax.php'); ?>", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-                        body: new URLSearchParams({
-                            action: "convert_to_pdf", // Required for WordPress AJAX
-                            html: document.getElementById("template_preview").innerHTML // Sending HTML content
-                        })
-                    })
-                        .then(response => response.json()) // Parse JSON response
-                        .then(data => {
-                            console.log("AJAX Response:", data);
-
-                            if (data.success) {
-                                alert("Template saved as PDF! View it here: " + data.pdf_url);
-                            } else {
-                                console.error("Error saving PDF:", data.error);
-                                alert("Error saving PDF: " + (data.error || 'Unknown error'));
+                            // If it's a text-based element
+                            if (selectedElement.tagName === "P" || selectedElement.tagName === "H1" || selectedElement.tagName === "H2" || selectedElement.tagName === "SPAN") {
+                                elementEditor.value = selectedElement.innerText;
+                                colorPicker.value = getComputedStyle(selectedElement).color; // Get current color
+                                editorSidebar.classList.remove("hidden"); // Show sidebar
                             }
+                        });
+                    }
+
+                    // ✅ Apply Text & Color Changes
+                    applyChangesButton.addEventListener("click", function () {
+                        if (selectedElement) {
+                            selectedElement.innerText = elementEditor.value;
+                            selectedElement.style.color = colorPicker.value;
+                            editorSidebar.classList.add("hidden"); // Hide sidebar after applying
+                        }
+                    });
+
+                    // 💾 Save as PDF & Upload to WordPress
+                    saveButton.addEventListener("click", function () {
+                        const newHtml = document.getElementById("template_preview").innerHTML;
+
+                        fetch("<?php echo admin_url('admin-ajax.php'); ?>", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                            body: new URLSearchParams({
+                                action: "convert_to_pdf", // Required for WordPress AJAX
+                                html: document.getElementById("template_preview").innerHTML // Sending HTML content
+                            })
                         })
-                        .catch(error => console.error("Fetch Error:", error));
+                            .then(response => response.json()) // Parse JSON response
+                            .then(data => {
+                                console.log("AJAX Response:", data);
+
+                                if (data.success) {
+                                    alert("Template saved as PDF! View it here: " + data.pdf_url);
+                                } else {
+                                    console.error("Error saving PDF:", data.error);
+                                    alert("Error saving PDF: " + (data.error || 'Unknown error'));
+                                }
+                            })
+                            .catch(error => console.error("Fetch Error:", error));
+                    });
+
                 });
 
-            });
 
 
-        </script>
+            </script>
 
-        <?php return ob_get_clean();
+
+            <?php return ob_get_clean();
     }
 
 
     public function customize_template_page()
     {
         ?>
-        <div class="wrap">
-            <h2>Customize Template</h2>
+            <div class="wrap">
+                <h2>Customize Template</h2>
 
-            <label for="template_select">Select Template:</label>
-            <select id="template_select">
-                <option value="">-- Select a Template --</option>
-                <?php
-                $templates = get_option('awg_templates', []);
-                foreach ($templates as $template) {
-                    echo "<option value='{$template['file']}'>{$template['name']}</option>";
-                }
-                ?>
-            </select>
+                <label for="template_select">Select Template:</label>
+                <select id="template_select">
+                    <option value="">-- Select a Template --</option>
+                    <?php
+                    $templates = get_option('awg_templates', []);
+                    foreach ($templates as $template) {
+                        echo "<option value='{$template['file']}'>{$template['name']}</option>";
+                    }
+                    ?>
+                </select>
 
-            <button id="load_template">Load Template</button>
+                <button id="load_template">Load Template</button>
 
-            <h3>Template Preview & Customization</h3>
-            <div id="template_editor">
-                <iframe id="template_frame" style="width:100%; height:400px; border:1px solid #ccc;"></iframe>
+                <h3>Template Preview & Customization</h3>
+                <div id="template_editor">
+                    <iframe id="template_frame" style="width:100%; height:400px; border:1px solid #ccc;"></iframe>
+                </div>
+
+                <h3>Add Sections</h3>
+                <button class="add-section" data-type="text">Add Text Block</button>
+                <button class="add-section" data-type="image">Add Image</button>
+                <button class="add-section" data-type="table">Add Table</button>
+
+                <button id="save_template">Save Customized Template</button>
             </div>
 
-            <h3>Add Sections</h3>
-            <button class="add-section" data-type="text">Add Text Block</button>
-            <button class="add-section" data-type="image">Add Image</button>
-            <button class="add-section" data-type="table">Add Table</button>
+            <script>
+                document.addEventListener("DOMContentLoaded", function () {
+                    // Elements
+                    const template_overlay = document.getElementById("template-overlay");
+                    const openBtn = document.getElementById("select-template-btn");
+                    const closeBtn = document.getElementById("close-overlay");
 
-            <button id="save_template">Save Customized Template</button>
-        </div>
+                    const templateSelect = document.getElementById("template_select");
+                    const loadButton = document.getElementById("load_template");
+                    const templateFrame = document.getElementById("template_frame");
+                    const saveButton = document.getElementById("save_template");
 
-        <script>
-            document.addEventListener("DOMContentLoaded", function () {
-                // Elements
-                const template_overlay = document.getElementById("template-overlay");
-                const openBtn = document.getElementById("select-template-btn");
-                const closeBtn = document.getElementById("close-overlay");
+                    const sidebarEditor = document.getElementById("editorSidebar"); // Sidebar panel
+                    const elementEditor = document.getElementById("elementEditor"); // Textarea
+                    const applyChangesBtn = document.getElementById("applyChanges"); // Apply Button
 
-                const templateSelect = document.getElementById("template_select");
-                const loadButton = document.getElementById("load_template");
-                const templateFrame = document.getElementById("template_frame");
-                const saveButton = document.getElementById("save_template");
+                    let templateDoc;
+                    let selectedElement = null;
 
-                const sidebarEditor = document.getElementById("editorSidebar"); // Sidebar panel
-                const elementEditor = document.getElementById("elementEditor"); // Textarea
-                const applyChangesBtn = document.getElementById("applyChanges"); // Apply Button
+                    // Show overlay
+                    openBtn.addEventListener("click", () => {
+                        template_overlay.classList.remove("hidden");
+                        document.body.classList.add("no-scroll");
+                    });
 
-                let templateDoc;
-                let selectedElement = null;
+                    // Close overlay
+                    closeBtn.addEventListener("click", () => {
+                        template_overlay.classList.add("hidden");
+                        document.body.classList.remove("no-scroll");
+                    });
 
-                // Show overlay
-                openBtn.addEventListener("click", () => {
-                    template_overlay.classList.remove("hidden");
-                    document.body.classList.add("no-scroll");
-                });
+                    // Load the selected template
+                    loadButton.addEventListener("click", function () {
+                        const selectedTemplate = templateSelect.value;
+                        if (selectedTemplate) {
+                            fetch(selectedTemplate)
+                                .then(response => response.text())
+                                .then(html => {
+                                    // Load HTML into iframe
+                                    templateFrame.contentDocument.open();
+                                    templateFrame.contentDocument.write(html);
+                                    templateFrame.contentDocument.close();
+                                    templateDoc = templateFrame.contentDocument;
 
-                // Close overlay
-                closeBtn.addEventListener("click", () => {
-                    template_overlay.classList.add("hidden");
-                    document.body.classList.remove("no-scroll");
-                });
+                                    // Enable selection after loading the template
+                                    templateFrame.contentWindow.addEventListener('click', function (event) {
+                                        selectedElement = event.target;
+                                        event.stopPropagation(); // Prevent overlay close
 
-                // Load the selected template
-                loadButton.addEventListener("click", function () {
-                    const selectedTemplate = templateSelect.value;
-                    if (selectedTemplate) {
-                        fetch(selectedTemplate)
-                            .then(response => response.text())
-                            .then(html => {
-                                // Load HTML into iframe
-                                templateFrame.contentDocument.open();
-                                templateFrame.contentDocument.write(html);
-                                templateFrame.contentDocument.close();
-                                templateDoc = templateFrame.contentDocument;
-
-                                // Enable selection after loading the template
-                                templateFrame.contentWindow.addEventListener('click', function (event) {
-                                    selectedElement = event.target;
-                                    event.stopPropagation(); // Prevent overlay close
-
-                                    // Check if it's an editable element
-                                    if (["H1", "H2", "H3", "P", "SPAN", "BUTTON"].includes(selectedElement.tagName)) {
-                                        selectedElement.style.outline = "2px solid blue"; // Highlight
-                                        sidebarEditor.classList.remove("hidden"); // Show sidebar
-                                        elementEditor.value = selectedElement.innerText; // Load text
-                                    }
+                                        // Check if it's an editable element
+                                        if (["H1", "H2", "H3", "P", "SPAN", "BUTTON"].includes(selectedElement.tagName)) {
+                                            selectedElement.style.outline = "2px solid blue"; // Highlight
+                                            sidebarEditor.classList.remove("hidden"); // Show sidebar
+                                            elementEditor.value = selectedElement.innerText; // Load text
+                                        }
+                                    });
                                 });
-                            });
-                    }
+                        }
+                    });
+
+                    // Apply changes to selected element
+                    applyChangesBtn.addEventListener("click", function () {
+                        if (selectedElement) {
+                            selectedElement.innerText = elementEditor.value;
+                        }
+                    });
+
+                    // Save template with modified HTML
+                    saveButton.addEventListener("click", function () {
+                        if (templateDoc) {
+                            const newHtml = templateDoc.documentElement.outerHTML;
+                            fetch("<?php echo admin_url('admin-ajax.php'); ?>", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                                body: "html=" + encodeURIComponent(newHtml),
+                            })
+                                .then(response => response.text())
+                                .then(data => alert("Template Saved!"));
+                        }
+                    });
                 });
 
-                // Apply changes to selected element
-                applyChangesBtn.addEventListener("click", function () {
-                    if (selectedElement) {
-                        selectedElement.innerText = elementEditor.value;
-                    }
-                });
-
-                // Save template with modified HTML
-                saveButton.addEventListener("click", function () {
-                    if (templateDoc) {
-                        const newHtml = templateDoc.documentElement.outerHTML;
-                        fetch("<?php echo admin_url('admin-ajax.php'); ?>", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/x-www-form-urlencoded" },
-                            body: "html=" + encodeURIComponent(newHtml),
-                        })
-                            .then(response => response.text())
-                            .then(data => alert("Template Saved!"));
-                    }
-                });
-            });
+            </script>
 
 
 
-        </script>
+            <style>
+                #template_editor {
+                    border: 1px solid #ccc;
+                    padding: 10px;
+                    background: #f9f9f9;
+                }
 
-        <style>
-            #template_editor {
-                border: 1px solid #ccc;
-                padding: 10px;
-                background: #f9f9f9;
-            }
+                button {
+                    background: #0073aa;
+                    color: white;
+                    padding: 8px 12px;
+                    border: none;
+                    cursor: pointer;
+                    margin-right: 5px;
+                    transition: 0.3s;
+                }
 
-            button {
-                background: #0073aa;
-                color: white;
-                padding: 8px 12px;
-                border: none;
-                cursor: pointer;
-                margin-right: 5px;
-                transition: 0.3s;
-            }
-
-            button:hover {
-                background: #005e8a;
-            }
-        </style>
-        <?php
+                button:hover {
+                    background: #005e8a;
+                }
+            </style>
+            <?php
     }
 
 
