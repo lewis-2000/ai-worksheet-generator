@@ -1,20 +1,21 @@
 {
-    "name": "lewis/ai-worksheet-generator",
-    "authors": [
-        {
-            "name": "Lewis Ng'ang'a",
-            "email": "flammylewis4@gmail.com"
-        }
-    ],
-    "require": {
-        "openai-php/client": "^0.10.3",
-        "symfony/http-client": "^7.2",
-        "nyholm/psr7": "^1.8",
-        "dompdf/dompdf": "^3.1"
-    },
-    "config": {
-        "allow-plugins": {
-            "php-http/discovery": true
-        }
+  "name": "lewis/ai-worksheet-generator",
+  "authors": [
+    {
+      "name": "Lewis Ng'ang'a",
+      "email": "flammylewis4@gmail.com"
     }
+  ],
+  "require": {
+    "php": ">=8.1",
+    "openai-php/client": "^0.10.3",
+    "symfony/http-client": "^6.3",
+    "nyholm/psr7": "^1.8",
+    "dompdf/dompdf": "^3.1"
+  },
+  "config": {
+    "allow-plugins": {
+      "php-http/discovery": true
+    }
+  }
 }
