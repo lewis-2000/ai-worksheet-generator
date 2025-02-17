@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name: AI Worksheet Generator
- * Plugin URI:  https://yourwebsite.com
+ * Plugin URI:  https://github.com/lewis-2000/ai-worksheet-generator
  * Description: Generate AI-powered worksheets.
  * Version:     1.0.1
  * Author:      Lewis Ng'ang'a
@@ -1124,15 +1124,15 @@ class AI_Worksheet_Generator
                                 <textarea id="awg-prompt"
                                     class="w-full p-2 border-2 border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 resize-none min-h-[110px] flex-1 text-sm text-gray-500"
                                     onfocus="if (this.value === this.defaultValue) this.value = '';">
-                        Exmaple: Create a mathematics worksheet for primary school students. The worksheet should have:
-                        - A title: "Basic Math Practice"
-                        - A subtitle: "Addition and Subtraction (Ages 6-8)"
-                        - A section with simple **addition problems** (e.g., 5 + 3 = __)
-                        - A section with simple **subtraction problems** (e.g., 9 - 4 = __)
-                        - A space for the student's name and date at the top
-                        - A footer with "Good luck!" centered at the bottom
-                        - A simple, readable font with a clear layout using a <table> for questions
-                        </textarea>
+                                        Exmaple: Create a mathematics worksheet for primary school students. The worksheet should have:
+                                        - A title: "Basic Math Practice"
+                                        - A subtitle: "Addition and Subtraction (Ages 6-8)"
+                                        - A section with simple **addition problems** (e.g., 5 + 3 = __)
+                                        - A section with simple **subtraction problems** (e.g., 9 - 4 = __)
+                                        - A space for the student's name and date at the top
+                                        - A footer with "Good luck!" centered at the bottom
+                                        - A simple, readable font with a clear layout using a <table> for questions
+                                        </textarea>
 
                                 <button id="awg-generate-btn"
                                     class="w-full mt-2 bg-blue-500 text-white py-2 px-3 rounded-md hover:bg-blue-600 transition text-sm">
@@ -1324,8 +1324,8 @@ class AI_Worksheet_Generator
                         });
                     });
 
-                    // Default open first tab
-                    document.querySelector('.tab-button').click();
+                    // Default open ai tab
+                    document.querySelector('.tab-button[data-tab="ai-generation"]').click();
 
                     // Template Selection Logic
                     function setupTemplateSelection() {
