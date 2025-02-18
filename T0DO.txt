@@ -1,0 +1,6 @@
+1. Refine the overlay UI
+2. Intergrate WooCommerce with the plugin
+3. Adapt the accent colors.
+4. Refine the plugin admin menu UI.
+5. Find a better solution for storing generated pdf's from the plugin.
+6. Usage tracking for the plugin.

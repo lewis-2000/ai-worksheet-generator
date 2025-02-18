@@ -40,6 +40,8 @@ require_once ABSPATH . 'wp-admin/includes/image.php'; // Needed for attachment m
 
 // Include dompdf for PDF generation
 require_once plugin_dir_path(__FILE__) . 'vendor/autoload.php';
+
+
 use Dompdf\Dompdf;
 use Dompdf\Options;
 
@@ -48,6 +50,20 @@ class AI_Worksheet_Generator
 
     private $generated_html;
     private $temp_user_id;
+    private $user_manager;
+
+    private static $instance = null;
+
+    public $database;
+
+    public static function instance()
+    {
+        if (self::$instance === null) {
+            self::$instance = new self();
+        }
+        return self::$instance;
+    }
+
 
 
     public function enqueue_assets()
@@ -65,13 +81,13 @@ class AI_Worksheet_Generator
         // ✅ Plugin styles
         wp_enqueue_style('awg-styles', plugin_dir_url(__FILE__) . 'css/styles.css');
 
-        // ✅ Plugin Scripts
-        wp_enqueue_script('awg-scripts', plugin_dir_url(__FILE__) . 'js/awg-scripts.js', array('jquery', 'pdfjs-lib'), null, true);
-
         // ✅ Localize AJAX
         wp_localize_script('awg-scripts', 'awg_ajax', [
             'ajax_url' => admin_url('admin-ajax.php')
         ]);
+
+        // ✅ Plugin Scripts
+        wp_enqueue_script('awg-scripts', plugin_dir_url(__FILE__) . 'js/awg-scripts.js', array('jquery', 'pdfjs-lib'), null, true);
     }
 
 
@@ -79,6 +95,16 @@ class AI_Worksheet_Generator
 
     public function __construct()
     {
+        //Test db
+        // require_once plugin_dir_path(__FILE__) . 'includes/class-awg-database.php';
+        // require_once plugin_dir_path(__FILE__) . 'includes/class-awg-user-manager.php';
+
+        // $this->user_manager = new AWG_User_Manager();
+
+
+        add_action('init', [$this, 'awg_test_user_operations']);
+
+
         // Enqueue Scripts & Styles
         add_action('admin_enqueue_scripts', [$this, 'enqueue_assets']);
         add_action('wp_enqueue_scripts', [$this, 'enqueue_assets']); // If using front-end
@@ -108,12 +134,31 @@ class AI_Worksheet_Generator
 
 
 
+
+
         //Transfer Correct pdf url
         // Shortcodes
         add_shortcode('awg_generate_html', [$this, 'display_html_response']);
         add_shortcode('awg_view_pdf', [$this, 'view_pdf']);
 
     }
+
+    // public function awg_test_user_operations()
+    // {
+    //     $user_id = 1; // Replace with an actual user ID
+    //     $action = 'Test Action';
+
+    //     // Test tracking an action
+    //     $this->user_manager->track_action($user_id, $action, true, false, 'subscribed', '2025-12-31');
+
+    //     // Test fetching user data
+    //     $user_data = $this->user_manager->get_user_data($user_id);
+
+    //     // Output for testing (this should be removed in production)
+    //     error_log(print_r($user_data, true));
+    // }
+
+
 
     public function admin_init_actions()
     {
@@ -1124,15 +1169,15 @@ class AI_Worksheet_Generator
                                 <textarea id="awg-prompt"
                                     class="w-full p-2 border-2 border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 resize-none min-h-[110px] flex-1 text-sm text-gray-500"
                                     onfocus="if (this.value === this.defaultValue) this.value = '';">
-                                        Exmaple: Create a mathematics worksheet for primary school students. The worksheet should have:
-                                        - A title: "Basic Math Practice"
-                                        - A subtitle: "Addition and Subtraction (Ages 6-8)"
-                                        - A section with simple **addition problems** (e.g., 5 + 3 = __)
-                                        - A section with simple **subtraction problems** (e.g., 9 - 4 = __)
-                                        - A space for the student's name and date at the top
-                                        - A footer with "Good luck!" centered at the bottom
-                                        - A simple, readable font with a clear layout using a <table> for questions
-                                        </textarea>
+                                                                                                                                                                                                                                                        Exmaple: Create a mathematics worksheet for primary school students. The worksheet should have:
+                                                                                                                                                                                                                                                        - A title: "Basic Math Practice"
+                                                                                                                                                                                                                                                        - A subtitle: "Addition and Subtraction (Ages 6-8)"
+                                                                                                                                                                                                                                                        - A section with simple **addition problems** (e.g., 5 + 3 = __)
+                                                                                                                                                                                                                                                        - A section with simple **subtraction problems** (e.g., 9 - 4 = __)
+                                                                                                                                                                                                                                                        - A space for the student's name and date at the top
+                                                                                                                                                                                                                                                        - A footer with "Good luck!" centered at the bottom
+                                                                                                                                                                                                                                                        - A simple, readable font with a clear layout using a <table> for questions
+                                                                                                                                                                                                                                                        </textarea>
 
                                 <button id="awg-generate-btn"
                                     class="w-full mt-2 bg-blue-500 text-white py-2 px-3 rounded-md hover:bg-blue-600 transition text-sm">
@@ -1795,8 +1840,25 @@ class AI_Worksheet_Generator
 
         return $output;
     }
+
+
+
+
+
+
 }
 
+// Plugin activation hook - Runs when the plugin is activated
+function awg_activate_plugin()
+{
+    require_once plugin_dir_path(__FILE__) . 'includes/class-awg-database.php';
+    $database = new AWG_Database();
+    $database->create_tables(); // Call the updated method
+}
+register_activation_hook(__FILE__, 'awg_activate_plugin');
+
+
 // Initialize the plugin
-new AI_Worksheet_Generator();
+AI_Worksheet_Generator::instance();
+
 ?>
